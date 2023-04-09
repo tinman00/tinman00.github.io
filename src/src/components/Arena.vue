@@ -37,6 +37,25 @@ const GameMode = {
 const SpecialName = {
   Test: '!test!'
 }
+const BuffType = {
+  Enchantment: 0,
+  OnDealDamage: 1,
+  OnDefend: 2,
+  OnTime: 3
+}
+var buffTypeCount = 4
+const BuffId = {
+  //#region Enchantment
+  //#endregion
+  //#region OnDealDamage
+  //#endregion
+  //#region OnDefend
+  //#endregion
+  //#region OnTime
+  Rapid: 0,
+  //#endregion
+}
+var buffCount = 20
 const playerString = ref("")
 const identity = ref(null)
 const sidepanel = ref('hsidepanel')
@@ -91,6 +110,98 @@ var SHA = {
   GetRandom: function GetRandom(seq, x) {
     return this.GetNext(seq[x % 16], Math.floor(x / 16) + 1)
   }
+}
+//#endregion
+//#region buff
+function GetBuffList() {
+  let list = new Array()
+  let l = new Array()
+  for (let j = 0; j < buffCount; j++) {
+    l.push(new EnchantmentBuff(0, null, true))
+  }
+  list.push(l)
+  l = new Array()
+  for (let j = 0; j < buffCount; j++) {
+    l.push(new OnDealDamageBuff(0, null, true))
+  }
+  list.push(l)
+  l = new Array()
+  for (let j = 0; j < buffCount; j++) {
+    l.push(new OnDefendBuff(0, null, true))
+  }
+  list.push(l)
+  l = new Array()
+  for (let j = 0; j < buffCount; j++) {
+    l.push(new OnTimeBuff(0, null, true))
+  }
+  list.push(l)
+  return list
+}
+// While creating new Buff, enum BuffId should be updated too
+class Buff {
+  constructor(_lastTime, _owner, _isPermanent = false) {
+    this.lastTime = _lastTime
+    this.owner = _owner
+    this.isPermanent = _isPermanent
+    this.buffId = undefined
+  }
+  Register() {}
+  Destroy() {}
+  Update(deltaTime) {
+    if (!this.isPermanent) {
+      if (this.lastTime > deltaTime) {
+        this.lastTime -= deltaTime
+      } else {
+        this.lastTime = 0
+        this.Destroy()
+      }
+    }
+  }
+  Impact() {}
+}
+class EnchantmentBuff extends Buff {
+  constructor(_lastTime, _owner, _isPermanent = false) {
+    super(_lastTime, _owner, _isPermanent)
+    this.type = BuffType.Enchantment
+    this.buffId = undefined
+  }
+}
+class OnDealDamageBuff extends Buff {
+  constructor(_lastTime, _owner, _isPermanent = false) {
+    super(_lastTime, _owner, _isPermanent)
+    this.type = BuffType.OnDealDamage
+    this.buffId = undefined
+  }
+  Impact(dmg, target = null) { return dmg }
+}
+class OnDefendBuff extends Buff {
+  constructor(_lastTime, _owner, _isPermanent = false) {
+    super(_lastTime, _owner, _isPermanent)
+    this.type = BuffType.OnDefend
+    this.buffId = undefined
+  }
+  Impact(dmg, Attacker = null) { return dmg }
+}
+class OnTimeBuff extends Buff {
+  constructor(_lastTime, _owner, _isPermanent = false, _impactFreq) {
+    super(_lastTime, _owner, _isPermanent)
+    this.type = BuffType.OnTime
+    this.impactFreq = _impactFreq
+    this.currentTime = 0
+    this.buffId = undefined
+  }
+  Impact(deltaTime) { return deltaTime }
+}
+class Rapid extends OnTimeBuff {
+  constructor(_lastTime, _owner, _rate, _isPermanent = false, _impactFreq = null) {
+    super(_lastTime, _owner, _isPermanent, _impactFreq)
+    this.type = BuffType.OnTime
+    this.impactFreq = _impactFreq
+    this.currentTime = 0
+    this.buffId = 0
+    this.rate = _rate
+  }
+  Impact(deltaTime) { return deltaTime * this.rate }
 }
 //#endregion
 //#region skill
@@ -150,11 +261,12 @@ class ActionSkill extends Skill {
     this.owner = plr
     this.level = plr.GetRand(100) + 1
     this.lvl = 0.75 + this.level / 400
-    this.CD = this.CD / this.lvl
-    this.currentCD = (this.lvl * 0.5 - 0.5) * this.CD
+    this.CD = this.lockCD ? this.CD : this.CD / this.lvl
+    this.currentCD = (this.lvl / 1.25 - 0.6) * this.CD
   }
-  InitActionSkl(_CD) {
+  InitActionSkl(_CD, _lockCD = false) {
     this.CD = _CD
+    this.lockCD = _lockCD
   }
   Act(targets) {}
   CoolDownCondition() {
@@ -186,16 +298,12 @@ class ActionSkill extends Skill {
 class BasicAttack extends ActionSkill {
   constructor() {
     super()
-    this.InitActionSkl(1000)
     this.name = '普通攻击'
     this.type = '基础技能'
   }
-  Init(plr, _CD) {
-    this.owner = plr
-    this.level = 1
-    this.lvl = 1
-    this.CD = this.CD
-    this.currentCD = 0
+  InitActionSkl(_CD, _lockCD = true) {
+    this.CD = _CD
+    this.lockCD = _lockCD
   }
   Act(targets) {
     let o = this.owner, stat = o.GetStat()
@@ -242,7 +350,7 @@ class BasicMissle extends BasicAttack {
     let o = this.owner, stat = o.GetStat()
     let dmg = stat[Stat.mag], target = targets[0]
     dmg = target.CalcDamage(dmg, DamageType.Magic)
-    Renderer.Print(Transfer(`[0] 吟唱魔导飞弹，`, o, null, null, null, null, null), 500)
+    Renderer.Print(Transfer(`[0] 发射魔导飞弹，`, o, null, null, null, null, null), 500)
     target.DealDamage(o, dmg, DamageType.Magic, SourceType.Ranged)
   }
   Introduction() {
@@ -251,10 +359,31 @@ class BasicMissle extends BasicAttack {
     Renderer.EndLine()
   }
 }
+class RapidChant extends ActionSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(2000, true)
+    this.name = '快速吟唱'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let dmg = stat[Stat.mag], target = targets[0]
+    dmg = target.CalcDamage(dmg, DamageType.Magic)
+    Renderer.Print(Transfer(`[0] 发动[快速吟唱]`, o, null, null, null, null, null), 500)
+    Renderer.EndLine()
+    let rate = 2 + (this.level - 1) / 200
+    o.AddBuff(new Rapid(2000, o, rate))
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(T(`效果：接下来一回合内行动速度变为 [${Math.ceil((2 + (this.level - 1) / 200) * 100)}%]`))
+    Renderer.EndLine()
+  }
+}
 class StormSlash extends ActionSkill {
   constructor() {
     super()
-    this.InitActionSkl(5000)
+    this.InitActionSkl(7000)
     this.name = '暴风斩'
   }
   Act(targets) {
@@ -267,10 +396,14 @@ class StormSlash extends ActionSkill {
     target.DealDamage(o, dmg, DamageType.Physical, SourceType.Melee)
     Renderer.Print(Transfer(` `, o, null, null, null, null, null), 0)
     target.DealDamage(o, dmg, DamageType.Physical, SourceType.Melee)
+    Renderer.Print(Transfer(` `, o, null, null, null, null, null), 0)
+    target.DealDamage(o, dmg, DamageType.Physical, SourceType.Melee)
+    Renderer.Print(Transfer(` `, o, null, null, null, null, null), 0)
+    target.DealDamage(o, dmg, DamageType.Physical, SourceType.Melee)
   }
   Introduction() {
     this.Intro()
-    Renderer.Print(Transfer("效果：连续造成三次 [2] 点的物理伤害", null, null, DamageType.Physical, `${Math.floor((1.2 * this.lvl) * 100)}%攻`))
+    Renderer.Print(Transfer("效果：连续造成五次 [2] 点的物理伤害", null, null, DamageType.Physical, `${Math.floor((1.2 * this.lvl) * 100)}%攻`))
     Renderer.EndLine()
   }
 }
@@ -396,6 +529,7 @@ class Wizard extends Profession {
     let tier2 = new Array()
     let tier3 = new Array()
     tier0.push(new BasicMissle())
+    tier1.push(new RapidChant())
     list = [tier0, tier1, tier2, tier3]
     return list
   }
@@ -484,7 +618,7 @@ class Plr {
     this.renderAlive = _type == CounterType.Player ? true : false;
     this.passiveSkillList = new Array();
     this.actionSkillList = new Array();
-    this.buffList = new Array();
+    this.buffList = GetBuffList();
     this.SP = 0;
     this.group = _group;
     this.type = _type;
@@ -518,16 +652,28 @@ class Plr {
     let last = new Array()
     // need improve
     for (let tier in list) {
-      let l = last.concat(list[tier])
-      if (l.length > 0) {
-        let skl = l[this.GetRand(l.length)]
-        l.splice(l.indexOf(skl), 1)
-        last = l
-        skl.Init(this);
-        if (skl instanceof ActionSkill) {
-          this.actionSkillList.push(skl);
-        } else {
-          this.passiveSkillList.push(skl);
+      if (tier == 0) {
+        for (let skl of list[tier]) {
+          skl.Init(this);
+          if (skl instanceof ActionSkill) {
+            this.actionSkillList.push(skl);
+          } else {
+            this.passiveSkillList.push(skl);
+          }
+        }
+      }
+      else {
+        let l = last.concat(list[tier])
+        if (l.length > 0) {
+          let skl = l[this.GetRand(l.length)]
+          l.splice(l.indexOf(skl), 1)
+          last = l
+          skl.Init(this);
+          if (skl instanceof ActionSkill) {
+            this.actionSkillList.push(skl);
+          } else {
+            this.passiveSkillList.push(skl);
+          }
         }
       }
     }
@@ -557,13 +703,13 @@ class Plr {
   }
   CalcDamage(damage, type) {
     if (type == DamageType.Physical) {
-      return Math.ceil(damage - this.stat[Stat.def]);
+      return Math.max(Math.ceil(damage - this.stat[Stat.def]), 1)
     }
     if (type == DamageType.Magic) {
-      return Math.ceil(damage - this.stat[Stat.res]);
+      return Math.max(Math.ceil(damage - this.stat[Stat.res]), 1)
     }
     if (type == DamageType.True) {
-      return Math.ceil(damage);
+      return Math.max(Math.ceil(damage), 1)
     }
     return 0;
   }
@@ -572,28 +718,45 @@ class Plr {
       return;
     let dex = this.GetStat()[Stat.dex];
     let str = this.GetStat()[Stat.atk];
-    // console.log(dex * dex)
-    if (srcType == SourceType.Ranged && dex * dex > this.GetRand(18000)) {
-      Renderer.Print(Transfer(`[1] [闪避]了此攻击`, null, this, null, null, this.health, this.health), 300, true, []);
-    } else if (srcType == SourceType.Melee && dex * dex > this.GetRand(3000) && str * str > this.GetRand(10000)) {
-      Renderer.Print(Transfer(`[1] [格挡]了此攻击`, null, this, null, null, this.health, this.health), 300, true, []);
-    } else {
-      let oldhp = this.health;
-      this.health = this.health - damage > 0 ? this.health - damage : 0;
-      let hp = this.health;
-      Renderer.Print(Transfer(`[1] 受到[2]点伤害`, null, this, type, damage, oldhp, this.health), 300, true, [new RenderRequest(this, hp)]);
-      if (this.health == 0) {
-        Renderer.Print(Transfer(`[0]死亡`, this, null, null, null, null, null), 500);
-        Renderer.EndLine();
-        this.Die();
+    let dmg = damage
+    for (let buff of source.buffList[BuffType.OnDealDamage]) {
+      dmg = buff.Impact(dmg, this)
+    }
+    for (let buff of this.buffList[BuffType.OnDefend]) {
+      dmg = buff.Impact(dmg, source)
+    }
+    if (dmg > 0) {
+      if (srcType == SourceType.Ranged && dex * dex > this.GetRand(18000)) {
+        Renderer.Print(Transfer(`[1] [闪避]了此攻击`, null, this, null, null, this.health, this.health), 300, true, []);
+      } else if (srcType == SourceType.Melee && dex * dex > this.GetRand(3000) && str * str > this.GetRand(10000)) {
+        Renderer.Print(Transfer(`[1] [格挡]了此攻击`, null, this, null, null, this.health, this.health), 300, true, []);
+      } else {
+        let oldhp = this.health;
+        this.health = this.health - dmg > 0 ? this.health - dmg : 0;
+        let hp = this.health;
+        Renderer.Print(Transfer(`[1] 受到[2]点伤害`, null, this, type, dmg, oldhp, this.health), 300, true, [new RenderRequest(this, hp)]);
+        if (this.health == 0) {
+          Renderer.Print(Transfer(`[0]死亡`, this, null, null, null, null, null), 500);
+          Renderer.EndLine();
+          this.Die();
+        }
+        source.damageDealt[type] += dmg;
       }
-      source.damageDealt[type] += damage;
     }
   }
   Act() {
     let s = this.GetStat();
     let deltaTime = 100 + s[Stat.spd];
+    let dTime = deltaTime
     let skls = new Array();
+    for (let buff of this.buffList[BuffType.OnTime]) {
+      deltaTime = buff.Impact(deltaTime)
+    }
+    for (let list of this.buffList) {
+      for (let buff of list) {
+        buff.Update(dTime)
+      }
+    }
     this.SP += deltaTime;
     for (let skl of this.actionSkillList) {
       skl.CoolDown(deltaTime);
@@ -615,6 +778,11 @@ class Plr {
       }
       this.SP -= 1000;
     }
+  }
+  AddBuff(buff) {
+    this.buffList[buff.type][buff.buffId].Destroy()
+    this.buffList[buff.type][buff.buffId] = buff
+    buff.Register()
   }
   UpdateRenderHealth(hp) {
     this.renderHealth = hp;
@@ -755,6 +923,7 @@ function NextRound() {
       RoundEnd()
     }
   }
+  // if (roundcnt > 100) gameEnd = true
 }
 function RoundEnd() {
   if (aliveGroups.length <= 1) {
@@ -830,8 +999,10 @@ function Run() {
       NextRound()
     }
     Win(aliveGroups[0].team)
+    Renderer.Close()
   } else if (gameMode.value == GameMode.Test) {
     Test()
+    Renderer.Close()
   }
 }
 //#endregion
@@ -851,14 +1022,19 @@ var Renderer = {
     this.renderHealthStream = new Array()
     this.wait = 1
     this.delay = 100
+    this.close = false
   },
   UpdateContent: function(id, content) {
     if (id != identity.value) return
+    if (content.cmd == 'close') {
+      this.close = true
+      return
+    }
     this.latestLine += content.str
     output.value = this.historyLines + Render.Row(this.latestLine)
   },
   Run: async function(id) {
-    if (id != identity.value) return
+    if (id != identity.value || this.close) return
     let scrollPos = mainPage.scrollTop + mainPage.clientHeight
     if (mainPage.scrollHeight - scrollPos < 100) {
       mainPage.scrollTop = mainPage.scrollHeight
@@ -888,7 +1064,7 @@ var Renderer = {
     }
   },
   Print: function(_content, _delayTime = 0, end = false, healthUpdates = []) {
-    this.outputStream.push({str: _content, delay: _delayTime, end:end})
+    this.outputStream.push({str: _content, delay: _delayTime, end:end, cmd:'print'})
     this.renderHealthStream.push(healthUpdates)
   },
   EndLine: function() {
@@ -912,6 +1088,9 @@ var Renderer = {
         req.plr.UpdateRenderHealth(req.hp)
       }
     }
+  },
+  Close: function() {
+    this.outputStream.push({str: '', delay: 0, end:false, cmd:'close'})
   }
 }
 class RenderRequest {
