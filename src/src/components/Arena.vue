@@ -22,25 +22,44 @@ const DamageType = {
   Magic: 1,
   True: 2
 }
+const SourceType = {
+  Melee: 0,
+  Ranged: 1
+}
 const CounterType = {
   Player: 0,
   Counter: 1
 }
+const GameMode = {
+  Normal: 0,
+  Test: 1
+}
+const SpecialName = {
+  Test: '!test!'
+}
 const playerString = ref("")
 const identity = ref(null)
-var gameEnd = false
+const sidepanel = ref('hsidepanel')
+const mainpanel = ref('hmainpanel')
+const gameMode = ref(GameMode.Normal)
 var teams = new Array()
+var rawPlayers = new Array()
 var players = new Array()
 var groups = new Array()
 var aliveGroups = new Array()
-var sideContent = ''
+var roundcnt = 0
+var gameEnd = false
+var mainPage = null
+var autoScroll = false
 //#region message receiver
 onMounted(() => {
+  mainPage = document.getElementById('mainPanel')
   window.addEventListener("message", (e) => {
     if (e.data.type == "rungame") {
       // console.log(e.data)
       playerString.value = e.data.msg
       identity.value = e.data.id
+      gameMode.value = e.data.mode
     }
     if (e.data.type == "speedup") {
       // console.log(e.data)
@@ -77,9 +96,12 @@ var SHA = {
 //#region skill
 class Skill {
   constructor() {
+    this.level = 1.0
+    this.name = ''
   }
   Init(plr) {
     this.owner = plr
+    this.level = 1.0 + plr.GetRand(100) / 100.0
   }
   SelectOneTarget() {
     return this.owner.SelectOneEnermy()
@@ -107,15 +129,32 @@ class Skill {
     }
     return targets
   }
+  Intro() {
+    Renderer.Print(T(`技能名：${this.name}`))
+    Renderer.EndLine()
+    Renderer.Print(T(`类型：${this.type}`))
+    Renderer.EndLine()
+    Renderer.Print(T(`等级： ${this.level}`))
+    Renderer.EndLine()
+  }
+  Introduction() {}
 }
 class ActionSkill extends Skill {
   constructor() {
     super()
     this.isReady = false
+    this.name = ''
+    this.type = '主动技能'
+  }
+  Init(plr, _CD) {
+    this.owner = plr
+    this.level = plr.GetRand(100) + 1
+    this.lvl = 0.75 + this.level / 400
+    this.CD = this.CD / this.lvl
+    this.currentCD = (this.lvl * 0.5 - 0.5) * this.CD
   }
   InitActionSkl(_CD) {
     this.CD = _CD
-    this.currentCD = 0
   }
   Act(targets) {}
   CoolDownCondition() {
@@ -132,22 +171,107 @@ class ActionSkill extends Skill {
     this.isReady = this.currentCD >= this.CD
     this.Act(targets)
   }
+  Intro() {
+    Renderer.Print(T(`技能名：${this.name}`))
+    Renderer.EndLine()
+    Renderer.Print(T(`类型：${this.type}`))
+    Renderer.EndLine()
+    Renderer.Print(T(`等级：${this.level}`))
+    Renderer.EndLine()
+    Renderer.Print(T(`冷却时间： ${Math.floor(this.CD / 10) / 100} 回合`))
+    Renderer.EndLine()
+  }
+  Introduction() {}
 }
 class BasicAttack extends ActionSkill {
   constructor() {
     super()
     this.InitActionSkl(1000)
+    this.name = '普通攻击'
+    this.type = '基础技能'
+  }
+  Init(plr, _CD) {
+    this.owner = plr
+    this.level = 1
+    this.lvl = 1
+    this.CD = this.CD
+    this.currentCD = 0
   }
   Act(targets) {
     let o = this.owner, stat = o.GetStat()
     let dmg = stat[Stat.atk], target = targets[0]
-    let randomType = this.owner.GetRand(3) // for testing
-    // dmg = target.CalcDamage(dmg, DamageType.Physical)
-    dmg = target.CalcDamage(dmg, randomType) // for testing
-    // Renderer.Print(`${o.name} 发动普通攻击，`, 500)
-    Renderer.Print(Transfer(`[0] 发动[普通攻击]，`, o, null, null, null, null, null), 500)
-    // target.DealDamage(dmg, DamageType.Physical)
-    target.DealDamage(dmg, randomType) // for testing
+    // let randomType = this.owner.GetRand(3) // for testing
+    dmg = target.CalcDamage(dmg, DamageType.Physical)
+    // dmg = target.CalcDamage(dmg, randomType) // for testing
+    Renderer.Print(Transfer(`[0] 发动普通攻击，`, o, null, null, null, null, null), 500)
+    target.DealDamage(o, dmg, DamageType.Physical, SourceType.Melee)
+    // target.DealDamage(o, dmg, randomType) // for testing
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点物理伤害", null, null, DamageType.Physical, '100%攻'))
+    Renderer.EndLine()
+  }
+}
+class BasicSlash extends BasicAttack {
+  constructor() {
+    super()
+    this.InitActionSkl(1000)
+    this.name = '挥剑劈砍'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let dmg = stat[Stat.atk], target = targets[0]
+    dmg = target.CalcDamage(dmg, DamageType.Physical)
+    Renderer.Print(Transfer(`[0] 挥剑劈砍，`, o, null, null, null, null, null), 500)
+    target.DealDamage(o, dmg, DamageType.Physical, SourceType.Melee)
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点物理伤害", null, null, DamageType.Physical, '100%攻'))
+    Renderer.EndLine()
+  }
+}
+class BasicMissle extends BasicAttack {
+  constructor() {
+    super()
+    this.InitActionSkl(1000)
+    this.name = '魔导飞弹'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let dmg = stat[Stat.mag], target = targets[0]
+    dmg = target.CalcDamage(dmg, DamageType.Magic)
+    Renderer.Print(Transfer(`[0] 吟唱魔导飞弹，`, o, null, null, null, null, null), 500)
+    target.DealDamage(o, dmg, DamageType.Magic, SourceType.Ranged)
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点魔法伤害", null, null, DamageType.Magic, '100%魔'))
+    Renderer.EndLine()
+  }
+}
+class StormSlash extends ActionSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(5000)
+    this.name = '暴风斩'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let dmg = stat[Stat.atk] * (1.2 * this.lvl), target = targets[0]
+    dmg = target.CalcDamage(dmg, DamageType.Physical)
+    Renderer.Print(Transfer(`[0] 发动[暴风斩]，`, o, null, null, null, null, null), 500)
+    target.DealDamage(o, dmg, DamageType.Physical, SourceType.Melee)
+    Renderer.Print(Transfer(` `, o, null, null, null, null, null), 0)
+    target.DealDamage(o, dmg, DamageType.Physical, SourceType.Melee)
+    Renderer.Print(Transfer(` `, o, null, null, null, null, null), 0)
+    target.DealDamage(o, dmg, DamageType.Physical, SourceType.Melee)
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：连续造成三次 [2] 点的物理伤害", null, null, DamageType.Physical, `${Math.floor((1.2 * this.lvl) * 100)}%攻`))
+    Renderer.EndLine()
   }
 }
 //#endregion
@@ -158,22 +282,134 @@ class Profession {
     this.statsBoost = [[], [], [], [], [], [], []]
   }
   GetSkillList(owner) {}
+  Intro() {
+    Renderer.Print(T(`职业：${this.name}`))
+    Renderer.EndLine()
+    let str = ''
+    str += `血量：[${this.basicStats[Stat.HP]}`
+    for (let boost of this.statsBoost[Stat.HP]) {
+      str += `+RD${boost}`
+    }
+    str += ']'
+    str = T(str)
+    Renderer.Print(str)
+    Renderer.EndLine()
+    str = ''
+    str += ` 攻：[${this.basicStats[Stat.atk]}`
+    for (let boost of this.statsBoost[Stat.atk]) {
+      str += `+RD${boost}`
+    }
+    str += ']'
+    str += ` 防：[${this.basicStats[Stat.def]}`
+    for (let boost of this.statsBoost[Stat.def]) {
+      str += `+RD${boost}`
+    }
+    str += ']'
+    str += ` 魔：[${this.basicStats[Stat.mag]}`
+    for (let boost of this.statsBoost[Stat.mag]) {
+      str += `+RD${boost}`
+    }
+    str += ']'
+    str = T(str)
+    Renderer.Print(str)
+    Renderer.EndLine()
+    str = ''
+    str += ` 抗：[${this.basicStats[Stat.res]}`
+    for (let boost of this.statsBoost[Stat.res]) {
+      str += `+RD${boost}`
+    }
+    str += ']'
+    str += ` 速：[${this.basicStats[Stat.spd]}`
+    for (let boost of this.statsBoost[Stat.spd]) {
+      str += `+RD${boost}`
+    }
+    str += ']'
+    str += ` 敏：[${this.basicStats[Stat.dex]}`
+    for (let boost of this.statsBoost[Stat.dex]) {
+      str += `+RD${boost}`
+    }
+    str += ']'
+    str = T(str)
+    Renderer.Print(str)
+    Renderer.EndLine()
+  }
+  Introduction() {}
 }
 class BasicProfession extends Profession {
   constructor() {
     super()
-    this.basicStats = [211, 40, 10, 32, 0, 32, 32]
-    this.statsBoost = [[64, 64, 64], [30, 30], [20], [64], [20], [64], [64]]
+    this.basicStats = [211, 40, 10, 32, 0, 64, 32]
+    this.statsBoost = [[64, 64, 64], [30, 30], [20], [64], [20], [32], [64]]
+    this.name = '白板'
   }
   GetSkillList() {
     let list = new Array()
-    list.push(new BasicAttack())
+    let tier0 = new Array()
+    let tier1 = new Array()
+    let tier2 = new Array()
+    let tier3 = new Array()
+    tier0.push(new BasicAttack())
+    list = [tier1, tier2, tier3]
     return list
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(T(`介绍：平平无奇的白板`))
+    Renderer.EndLine()
+  }
+}
+class Kight extends Profession {
+  constructor() {
+    super()
+    this.basicStats = [180, 40, 10, 20, 0, 60, 30]
+    this.statsBoost = [[60, 60], [30, 30], [20], [10], [10], [40], [30]]
+    this.name = '骑士'
+  }
+  GetSkillList() {
+    let list = new Array()
+    let tier0 = new Array()
+    let tier1 = new Array()
+    let tier2 = new Array()
+    let tier3 = new Array()
+    tier0.push(new BasicSlash())
+    tier3.push(new StormSlash())
+    list = [tier0, tier1, tier2, tier3]
+    return list
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(T(`介绍：忠诚的战士`))
+    Renderer.EndLine()
+  }
+}
+class Wizard extends Profession {
+  constructor() {
+    super()
+    this.basicStats = [120, 10, 10, 60, 10, 40, 20]
+    this.statsBoost = [[60], [20], [10, 10], [30], [20], [20], [20]]
+    this.name = '巫师'
+  }
+  GetSkillList() {
+    let list = new Array()
+    let tier0 = new Array()
+    let tier1 = new Array()
+    let tier2 = new Array()
+    let tier3 = new Array()
+    tier0.push(new BasicMissle())
+    list = [tier0, tier1, tier2, tier3]
+    return list
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(T(`介绍：神秘的巫师`))
+    Renderer.EndLine()
   }
 }
 function GetProfessionList() {
   var list = new Array()
-  list.push(new BasicProfession())
+  // list.push(new BasicProfession())
+  list.push(new Kight())
+  list.push(new Wizard())
   return list
 }
 //#endregion
@@ -213,6 +449,7 @@ class Group {
       let pos = players.indexOf(this.counter) + this.members.length + 1
       players.splice(pos, 0, plr)
       this.members.push(plr)
+      rawPlayers.push(plr)
     }
     this.Update()
   }
@@ -227,142 +464,161 @@ class Group {
 }
 //#endregion
 //#region player
-function Plr(_name, _team, _group, _type) {
-  // console.log(`create Plr(${_name}, ${_team}, ${_group}, ${_type})`)
-  this.name = _name
-  this.team = _team
-  this.attr = SHA.Get(_name)
-  this.currentRand = 0
-  this.stat = [0, 0, 0, 0, 0, 0, 0]
- // D refers to Direct, F refers to Final
-  this.statDPlus = [0, 0, 0, 0, 0, 0, 0]
-  this.statDMult = [0, 0, 0, 0, 0, 0, 0]
-  this.statFPlus = [0, 0, 0, 0, 0, 0, 0]
-  this.statFMult = [0, 0, 0, 0, 0, 0, 0]
-  this.health = 0
-  this.maxHealth = 0
-  this.renderOldHealth = 0
-  this.renderHealth = 0
-  this.alive = _type == CounterType.Player ? true : false
-  this.passiveSkillList = new Array()
-  this.actionSkillList = new Array()
-  this.buffList = new Array()
-  this.SP = 0
-  this.group = _group
-  this.type = _type
-}
-Plr.prototype = {
-  GetRandom: function() {
-    return SHA.GetRandom(this.attr, this.currentRand++)
-  },
-  GetRand: function(num) {
-    return this.GetRandom() % num
-  },
-  InitProfession: function() {
-    let professionList = GetProfessionList()
-    this.profession = professionList[this.GetRand(professionList.length)]
-  },
-  InitStat: function() {
-    let p = this.profession
-    this.stat = p.basicStats;
+class Plr {
+  constructor(_name, _team, _group, _type) {
+    // console.log(`create Plr(${_name}, ${_team}, ${_group}, ${_type})`)
+    this.name = _name;
+    this.team = _team;
+    this.attr = SHA.Get(_name);
+    this.currentRand = 0;
+    this.stat = [0, 0, 0, 0, 0, 0, 0];
+    // D refers to Direct, F refers to Final
+    this.statDPlus = [0, 0, 0, 0, 0, 0, 0];
+    this.statDMult = [0, 0, 0, 0, 0, 0, 0];
+    this.statFPlus = [0, 0, 0, 0, 0, 0, 0];
+    this.statFMult = [0, 0, 0, 0, 0, 0, 0];
+    this.health = 0;
+    this.maxHealth = 0;
+    this.renderHealth = 0;
+    this.alive = _type == CounterType.Player ? true : false;
+    this.renderAlive = _type == CounterType.Player ? true : false;
+    this.passiveSkillList = new Array();
+    this.actionSkillList = new Array();
+    this.buffList = new Array();
+    this.SP = 0;
+    this.group = _group;
+    this.type = _type;
+    this.damageDealt = [0, 0, 0];
+  }
+  GetRandom() {
+    return SHA.GetRandom(this.attr, this.currentRand++);
+  }
+  GetRand(num) {
+    return this.GetRandom() % num;
+  }
+  InitProfession() {
+    let professionList = GetProfessionList();
+    this.profession = professionList[this.GetRand(professionList.length)];
+  }
+  InitStat() {
+    let p = this.profession;
+    this.stat = new Array().concat(p.basicStats);
     for (let i in this.stat) {
-      for (let j in p.statsBoost[i])
-        this.stat[i] += this.GetRand(p.statsBoost[i][j]);
-    }
-    this.health = this.stat[Stat.HP]
-    this.maxHealth = this.stat[Stat.HP]
-    this.renderHealth = this.health
-    this.renderOldHealth = this.maxHealth
-  },
-  InitSkills: function() {
-    let p = this.profession
-    let list = p.GetSkillList()
-    // need improve
-    for (let skl of list) {
-      skl.Init(this)
-      if (skl instanceof ActionSkill) {
-        this.actionSkillList.push(skl)
-      } else {
-        this.passiveSkillList.push(skl)
+      for (let j in p.statsBoost[i]) {
+        this.stat[i] += this.GetRand(p.statsBoost[i][j] + 1);
       }
     }
-  },
-  GetStat: function() {
-    let ret = new Array()
+    this.health = this.stat[Stat.HP];
+    this.maxHealth = this.stat[Stat.HP];
+    this.renderHealth = this.health;
+  }
+  InitSkills() {
+    let p = this.profession;
+    let list = p.GetSkillList();
+    let last = new Array()
+    // need improve
+    for (let tier in list) {
+      let l = last.concat(list[tier])
+      if (l.length > 0) {
+        let skl = l[this.GetRand(l.length)]
+        l.splice(l.indexOf(skl), 1)
+        last = l
+        skl.Init(this);
+        if (skl instanceof ActionSkill) {
+          this.actionSkillList.push(skl);
+        } else {
+          this.passiveSkillList.push(skl);
+        }
+      }
+    }
+  }
+  GetStat() {
+    let ret = new Array();
     for (let i = 0; i < this.stat.length; i++) {
-      ret.push(Math.floor(((this.stat[i] + this.statDPlus[i]) * (1 + this.statDMult[i]) + this.statFPlus[i]) * (1 + this.statFMult[i])))
+      ret.push(Math.floor(((this.stat[i] + this.statDPlus[i]) * (1 + this.statDMult[i]) + this.statFPlus[i]) * (1 + this.statFMult[i])));
     }
-    ret.push(this.health)
-    ret.push(this.maxHealth)
-    return ret
-  }, 
-  Die: function() {
-    this.alive = false
-    this.group.Die(this)
-  },
-  SelectOneEnermy: function() {
-    let g = this.group
-    let pos = this.GetRand(aliveGroups.length - 1)
+    ret.push(this.health);
+    ret.push(this.maxHealth);
+    return ret;
+  }
+  Die() {
+    this.alive = false;
+    this.group.Die(this);
+  }
+  SelectOneEnermy() {
+    let g = this.group;
+    let pos = this.GetRand(aliveGroups.length - 1);
     if (pos >= aliveGroups.indexOf(g)) {
-      pos++
+      pos++;
     }
-    let targetGroup = aliveGroups[pos]
-    pos = this.GetRand(targetGroup.members.length)
-    return targetGroup.members[pos]
-  },
-  CalcDamage: function(damage, type) {
+    let targetGroup = aliveGroups[pos];
+    pos = this.GetRand(targetGroup.members.length);
+    return targetGroup.members[pos];
+  }
+  CalcDamage(damage, type) {
     if (type == DamageType.Physical) {
-      return damage - this.stat[Stat.def]
+      return Math.ceil(damage - this.stat[Stat.def]);
     }
     if (type == DamageType.Magic) {
-      return damage - this.stat[Stat.res]
+      return Math.ceil(damage - this.stat[Stat.res]);
     }
     if (type == DamageType.True) {
-      return damage
+      return Math.ceil(damage);
     }
-    return 0
-  },
-  DealDamage: function(damage, type) {
-    let oldhp = this.health
-    this.health = this.health - damage > 0 ? this.health - damage : 0
-    let hp = this.health
-    Renderer.Print(Transfer(`[1] 受到[2]点伤害`, null, this, type, damage, oldhp, this.health), 500, false, [new RenderRequest(this, oldhp, hp)])
-    Renderer.EndLine()
-    if (this.health == 0) {
-      Renderer.Print(Transfer(`[0]死亡`, this, null, null, null, null, null), 300)
-      Renderer.EndLine()
-      this.Die()
+    return 0;
+  }
+  DealDamage(source, damage, type, srcType) {
+    if (!this.alive)
+      return;
+    let dex = this.GetStat()[Stat.dex];
+    let str = this.GetStat()[Stat.atk];
+    // console.log(dex * dex)
+    if (srcType == SourceType.Ranged && dex * dex > this.GetRand(18000)) {
+      Renderer.Print(Transfer(`[1] [闪避]了此攻击`, null, this, null, null, this.health, this.health), 300, true, []);
+    } else if (srcType == SourceType.Melee && dex * dex > this.GetRand(3000) && str * str > this.GetRand(10000)) {
+      Renderer.Print(Transfer(`[1] [格挡]了此攻击`, null, this, null, null, this.health, this.health), 300, true, []);
+    } else {
+      let oldhp = this.health;
+      this.health = this.health - damage > 0 ? this.health - damage : 0;
+      let hp = this.health;
+      Renderer.Print(Transfer(`[1] 受到[2]点伤害`, null, this, type, damage, oldhp, this.health), 300, true, [new RenderRequest(this, hp)]);
+      if (this.health == 0) {
+        Renderer.Print(Transfer(`[0]死亡`, this, null, null, null, null, null), 500);
+        Renderer.EndLine();
+        this.Die();
+      }
+      source.damageDealt[type] += damage;
     }
-  },
-  Act: function() {
-    let s = this.GetStat()
-    let deltaTime = 100 + s[Stat.spd]
-    let skls = new Array()
-    this.SP += deltaTime
+  }
+  Act() {
+    let s = this.GetStat();
+    let deltaTime = 100 + s[Stat.spd];
+    let skls = new Array();
+    this.SP += deltaTime;
     for (let skl of this.actionSkillList) {
-      skl.CoolDown(deltaTime)
+      skl.CoolDown(deltaTime);
     }
     // console.log(deltaTime)
     if (this.SP >= 1000) {
       for (let skl of this.actionSkillList) {
         if (skl.isReady) {
-          skls.push(skl)
+          skls.push(skl);
         }
       }
       // console.log(this, skls)
       if (skls.length > 0) {
-        let skl = skls[this.GetRand(skls.length)]
+        let skl = skls[this.GetRand(skls.length)];
         // console.log(skls, skl)
-        let targets = skl.SelectTargets()
-        skl.Use(targets)
+        let targets = skl.SelectTargets();
+        skl.Use(targets);
         // skl.Act(targets)
       }
-      this.SP -= 1000
+      this.SP -= 1000;
     }
-  },
-  UpdateRenderHealth: function(oldhp, hp) {
-    this.renderOldHealth = oldhp
-    this.renderHealth = hp
+  }
+  UpdateRenderHealth(hp) {
+    this.renderHealth = hp;
+    this.renderAlive = hp > 0;
   }
 }
 //#endregion
@@ -372,11 +628,12 @@ function Reset() {
   Renderer.Reset()
   gameEnd = false
   teams = new Array()
+  rawPlayers = new Array()
   players = new Array()
   groups = new Array()
   aliveGroups = new Array()
   roundcnt = 0
-  sideContent = ''
+  autoScroll = false
 }
 function InitPlayers() {
   GetTeams()
@@ -394,6 +651,10 @@ function GetTeams() {
       plrs.splice(i, 1)
       i--
     }
+  }
+  if (plrs[0] == SpecialName.Test) {
+    plrs.splice(0, 1)
+    gameMode.value = GameMode.Test
   }
   for (let i in plrs) {
     if (plrs[i] != '') {
@@ -435,23 +696,21 @@ function GetTeams() {
         if (curTeam.length != 0) {
           teams.push(curTeam)
           teamId++
-          newGroup = new Group(teamId, curTeam)
           groups.push(newGroup)
           newGroup.Add(new Plr(`Team ${teamId}`, curTeam, newGroup, CounterType.Counter))
         }
         curTeam = new Array()
+        newGroup = new Group(teamId, curTeam)
       }
     }
     if (curTeam.length != 0) {
       teams.push(curTeam)
     }
   }
-  // for (let team of teams) {
-  //   for (let plr of team){
-  //     players.push(plr)
-  //   }
-  // }
-  // console.log(teams)
+  // console.log(rawPlayers)
+  if (rawPlayers.length <= 1) {
+    gameMode.value = GameMode.Test
+  }
 }
 function InitProfessions() {
   for (let team of teams) {
@@ -464,6 +723,8 @@ function InitProfessions() {
 }
 function ShowBasicStats() {
   let str = ""
+  Renderer.Print(Render.Title1(`Namerena False魔改版`))
+  Renderer.Print(Render.Title2(`(魔改自“名字竞技场”，原地址namerena.github.io)`), 0, true)
   // console.log(teams)
   for (let team of teams) {
     for (let plr of team) {
@@ -473,10 +734,9 @@ function ShowBasicStats() {
       // console.log(plr.name, plr.GetStat())
     }
   }
-  Renderer.Print('<br>', 0, 1)
+  Renderer.EmptyLine()
 }
 //#endregion
-let roundcnt = 0
 function NextRound() {
   roundcnt++
   // console.log(`Round ${roundcnt}`)
@@ -490,11 +750,11 @@ function NextRound() {
   //   console.log(plr.name, plr.alive)
   // }
   for (let plr of players) {
-    if (plr.alive) {
+    if (plr.alive && !gameEnd) {
       plr.Act()
+      RoundEnd()
     }
   }
-  RoundEnd()
 }
 function RoundEnd() {
   if (aliveGroups.length <= 1) {
@@ -504,23 +764,75 @@ function RoundEnd() {
     gameEnd = true;
   }
 }
-function Win(team) {
-  Renderer.Print(T('[---------------------------------]'), 0, 1, [])
-  for (let plr of team) {
-    Renderer.Print(Render.PlayerForRender(plr, plr.health, plr.health), 0, 1, [])
+function Win(_team) {
+  Renderer.EmptyLine()
+  Renderer.Print(T('战斗结束'), 800, true, [])
+  Renderer.EmptyLine()
+  let str = '', final = ''
+  str += Render.td(`胜者`, 'resultth')
+  str += Render.td(`造成物理伤害`, 'resultth')
+  str += Render.td(`造成魔法伤害`, 'resultth')
+  str += Render.td(`造成真实伤害`, 'resultth')
+  final += Render.tr(str, 'resulttr')
+  str = ''
+  for (let plr of _team) {
+    str += Render.td(Render.PlayerForRender(plr, plr.health, plr.health), 'resulttd resultname')
+    str += Render.td(Transfer(` [2] `, null, null, DamageType.Physical, plr.damageDealt[DamageType.Physical], null, null), 'resulttd')
+    str += Render.td(Transfer(` [2] `, null, null, DamageType.Magic, plr.damageDealt[DamageType.Magic], null, null), 'resulttd')
+    str += Render.td(Transfer(` [2] `, null, null, DamageType.True, plr.damageDealt[DamageType.True], null, null), 'resulttd')
+    final += Render.tr(str, 'resulttr')
+    str = ''
   }
-  Renderer.Print('获得[胜利]!!!', 0, 1, [])
-  Renderer.Print(T('[---------------------------------]'), 0, 1, [])
+  str += Render.td(`败者`, 'resultth')
+  str += Render.td(`造成物理伤害`, 'resultth')
+  str += Render.td(`造成魔法伤害`, 'resultth')
+  str += Render.td(`造成真实伤害`, 'resultth')
+  final += Render.tr(str, 'resulttr')
+  str = ''
+  for (let team of teams) {
+    if (team == _team) continue
+    for (let plr of team) {
+      str += Render.td(Render.PlayerForRender(plr, plr.health, plr.health), 'resulttd resultname')
+      str += Render.td(Transfer(` [2] `, null, null, DamageType.Physical, plr.damageDealt[DamageType.Physical], null, null), 'resulttd')
+      str += Render.td(Transfer(` [2] `, null, null, DamageType.Magic, plr.damageDealt[DamageType.Magic], null, null), 'resulttd')
+      str += Render.td(Transfer(` [2] `, null, null, DamageType.True, plr.damageDealt[DamageType.True], null, null), 'resulttd')
+      final += Render.tr(str, 'resulttr')
+      str = ''
+    }
+  }
+  final = Render.table(final, 'resultchart', 0)
+  Renderer.Print(final, 0, false, [])
+  Renderer.EndLine()
+}
+function Test() {
+  for (let plr of rawPlayers) {
+    Renderer.Print(Render.Player(plr), 400, true)
+    plr.profession.Introduction()
+    Renderer.EmptyLine()
+    for (let skl of plr.passiveSkillList) {
+      skl.Introduction()
+      Renderer.EmptyLine()
+    }
+    for (let skl of plr.actionSkillList) {
+      skl.Introduction()
+      Renderer.EmptyLine()
+    }
+    Renderer.EmptyLine()
+  }
 }
 function Run() {
   Reset()
   InitPlayers()
   ShowBasicStats()
   Renderer.Run(identity.value)
-  while (!gameEnd) {
-    NextRound()
+  if (gameMode.value == GameMode.Normal) {
+    while (!gameEnd) {
+      NextRound()
+    }
+    Win(aliveGroups[0].team)
+  } else if (gameMode.value == GameMode.Test) {
+    Test()
   }
-  Win(aliveGroups[0].team)
 }
 //#endregion
 //#region output stream
@@ -544,21 +856,16 @@ var Renderer = {
     if (id != identity.value) return
     this.latestLine += content.str
     output.value = this.historyLines + Render.Row(this.latestLine)
-
-    let str = ''
-    for (let team of teams) {
-      for (let plr of team) {
-        let oldhp = plr.renderOldHealth, hp = plr.renderHealth
-        str += Render.Row(Render.PlayerForRender(plr, oldhp, hp))
-      }
-    }
-    sideContent = str
   },
   Run: async function(id) {
     if (id != identity.value) return
+    let scrollPos = mainPage.scrollTop + mainPage.clientHeight
+    if (mainPage.scrollHeight - scrollPos < 100) {
+      mainPage.scrollTop = mainPage.scrollHeight
+    }
     let next = this.outputStream.shift()
     let healthChange = this.renderHealthStream.shift()
-    this.UpdateRenderHealth(healthChange)
+    // this.UpdateRenderHealth(healthChange)
     if (next == undefined) {
       setTimeout(() => {
         this.Run(id)
@@ -570,20 +877,25 @@ var Renderer = {
           this.UpdateContent(id, next)
           this.End(next.end)
           this.Run(id)
+          this.UpdateRenderHealth(healthChange)
         }, next.delay * this.wait)
       } else {
         this.UpdateContent(id, next)
         this.End(next.end)
         this.Run(id)
+        this.UpdateRenderHealth(healthChange)
       }
     }
   },
-  Print: function(_content, _delayTime, end, healthUpdates) {
+  Print: function(_content, _delayTime = 0, end = false, healthUpdates = []) {
     this.outputStream.push({str: _content, delay: _delayTime, end:end})
     this.renderHealthStream.push(healthUpdates)
   },
   EndLine: function() {
     this.Print('', 0, true)
+  },
+  EmptyLine: function() {
+    this.Print(`<br>`, 0, true)
   },
   End: function(end) {
     if (end) {
@@ -597,15 +909,14 @@ var Renderer = {
   UpdateRenderHealth: function(healthChange) {
     if (healthChange instanceof Array) {
       for (let req of healthChange) {
-        req.plr.UpdateRenderHealth(req.oldhp, req.hp)
+        req.plr.UpdateRenderHealth(req.hp)
       }
     }
   }
 }
 class RenderRequest {
-  constructor(_plr, _oldhp, _hp) {
+  constructor(_plr, _hp) {
     this.plr = _plr
-    this.oldhp = _oldhp
     this.hp = _hp
   }
 }
@@ -661,24 +972,29 @@ var Render = {
     str += `<span class="name">${name}</span>`
     return str
   },
-  Icon: function() {
+  Icon: function(_class = '') {
     let str = ''
-    str += `<span class="icon"></span>`
+    str += `<span class="${_class}"></span>`
     return str
   },
-  Player: function(plr, oldhp, newhp) {
+  Player: function(plr, oldhp = 0, newhp = 0) {
     let str = ''
-    str += this.Icon()
+    str += this.Icon('icon')
     str += this.HealthBar(plr, oldhp, newhp)
     str += this.Name(plr.name)
     return this.Span(str)
   },
-  PlayerForRender: function(plr, oldhp, newhp) {
+  PlayerForRender: function(plr, oldhp = 0, newhp = 0) {
     let str = ''
     str += this.Icon()
     str += this.HealthBarUnhidden(plr, oldhp, newhp)
     str += this.Name(plr.name)
-    return this.Span(str)
+    if (newhp == 0) {
+      return this.Span(str, 'dead')
+    }
+    else {
+      return this.Span(str)
+    }
   },
   Damage: function(type, dmg) {
     let str = ''
@@ -691,18 +1007,33 @@ var Render = {
     }
     return str
   },
-  Row: function(str) {
+  Row: function(str, _class = '') {
     // return `${str}`
     return `<p class="row">${str}</p>`
   },
-  Span: function(str) {
-    return `<span class="u">${str}</span>`
+  Span: function(str, _class = '') {
+    return `<span class="u ${_class}">${str}</span>`
   },
-  SText: function(str) {
+  SText: function(str, _class = '') {
     return `<span class="stext">${str}</span>`
+  },
+  td: function(str, _class = '', _colspan = 1) {
+    return `<td class="${_class}" colspan="${_colspan}">${str}</td>`
+  },
+  tr: function(str, _class = '') {
+    return `<tr class="${_class}">${str}</tr>`
+  },
+  table: function(str, _class = '', _border = 1) {
+    return `<table class="${_class}" border="${_border}px solid black">${str}</table>`
+  },
+  Title1: function(str, _class = '') {
+    return `<span class="u title1 ${_class}">${str}</span>`
+  },
+  Title2: function(str, _class = '') {
+    return `<span class="u title2 ${_class}">${str}</span>`
   }
 }
-function Transfer(_str, caster, target, dmgtype, dmg, oldhp, newhp) {
+function Transfer(_str, caster = null, target = null, dmgtype = null, dmg = '', oldhp = 0, newhp = 0) {
   let s = '', str = _str
   let reg = str.match(/\[.*?\]/g)
   for (let i in reg) {
@@ -722,24 +1053,49 @@ function Transfer(_str, caster, target, dmgtype, dmg, oldhp, newhp) {
 function T(str) {
   return Transfer(str, null, null, null, null, null, null)
 }
+window.onresize = () => {
+  if (document.documentElement.clientWidth >= 500) {
+    sidepanel.value = 'hsidepanel'
+    mainpanel.value = 'hmainpanel'
+  } else {
+    sidepanel.value = 'vsidepanel'
+    mainpanel.value = 'vmainpanel'
+  }
+}
 //#endregion
 
 
 </script>
 
 <template>
-  <div id="sidePanel" class="sidepanel">
-    <div v-html="sideContent"></div>
-    <!-- <div v-for="plr in players"> -->
-      <!-- {{ `Team ${plr.team} Name: ${plr.name}`}} -->
-    <!-- </div> -->
+  <div id="sidePanel" :class="sidepanel">
+    <div class="plrlist" v-for="plr in rawPlayers" :style="{opacity: plr.renderAlive ? 1 : 0.5}">
+      <div class="icon"></div>
+      <div class="name">{{ plr.name }}</div>
+      <div class="maxhp" :style="{width: Render.HPToWidth(plr.maxHealth)}">
+        <div class="oldhp" :style="{width: Render.HPToWidth(plr.renderHealth)}"></div>
+        <div class="hp" :style="{width: Render.HPToWidth(plr.renderHealth)}"></div>
+      </div>
+    </div>
   </div>
-  <div id="mainPanel" class="mainpanel">
-    <div v-html="output"></div>
+  <div id="mainPanel" :class="mainpanel">
+    <div v-html="output" class="maincontent"></div>
   </div>
 </template>
 
 <style>
+#app {
+  margin: 0;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+}
+body {
+  font-size: 15px;
+  line-height: 16px;
+}
 div {
   display: inline-block;
   box-sizing: border-box;
@@ -749,28 +1105,68 @@ p {
 }
 span {
   display: inline-block;
+  box-sizing: border-box;
+}
+.plrlist {
+  position: relative;
+  display: block;
+  padding-top: 0px;
+  padding-bottom: 0px;
+  margin-top: 12px;
+  margin-bottom: 12px;
 }
 .row {
   margin: 0;
   line-height: 24px;
 }
-.sidepanel {
+.hsidepanel {
+  background-color: #fbfbfb;
   position: absolute;
   left: 0;
   width: 200px;
   height: 100%;
+  padding: 2px;
+  border-right-color: blueviolet;
+  border-right-width: 2px;
+  border-right-style: solid;
+  overflow: auto;
 }
-.mainpanel {
+.vsidepanel {
+  display: none;
+}
+.hmainpanel {
   position: absolute;
   left: 200px;
   width: calc(100% - 200px);
   height: 100%;
+  overflow: auto;
+}
+.vmainpanel {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+.title1 {
+  font-size: larger;
+  line-height: 40px;
+  margin: 8px;
+}
+.title2 {
+  line-height: 40px;
+  margin: 8px;
+}
+.maincontent {
+  position: absolute;
 }
 .sentence {
   line-height: 14px;
 }
 .name {
- background: #f3f3f8;
+  margin: 0 2px;
+  padding: 2px;
+  background: #f3f3f8;
 }
 .u {
   position: relative;
@@ -786,11 +1182,13 @@ span {
  background: #f66;
  height:2px;
  position: absolute;
+ transition: width 0.5s ease-in 1s;
 }
 .hp{
  background: #4c4;
  height:2px;
  position: absolute;
+ transition: width 1s;
 }
 .healhp{
  background: #08f;
@@ -801,12 +1199,17 @@ span {
   position: relative;
   width: 16px;
   height: 16px;
-  vertical-align: bottom;
+  vertical-align: middle;
   image-rendering: pixelated;
   background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAI9JREFUOE/dkzEOgDAIReEMro7e/0SOrj0D5htpAKGpcbOLqcj7v/LLIiJERMyMR1/3676v6gwAim3dHGA5dlLIqA5Zic1KAgRrVB8CnKVkA4E/AKopzJwfUyrH+AqgQarGFWEuIzaJnwCzLqz61aMO1GYWW5vMxx2JgMpJVO6CGSBCqub0CPaP6xWOtu03J17Hh+CCR3ivAAAAAElFTkSuQmCC");
 }
 .row {
   display: block;
+  padding-left: 16px;
+}
+.row>*:first-child {
+  position: relative;
+  left: -8px;
 }
 .stext {
   color: #08f;
@@ -819,5 +1222,36 @@ span {
 }
 .truedamage {
   color: black;
+}
+.resultchart {
+  border-collapse: collapse;
+  text-align: center;
+}
+.resulttr {
+
+}
+.resultth {
+  background-color: #fafafa;
+  height: 24px;
+  width: 120px;
+  border-width: 2px;
+  border-style: none;
+  border-color: #eeeeee;
+  border-top-style: solid;
+}
+.resulttd {
+  height: 30px;
+  width: 120px;
+  border-width: 2px;
+  border-style: none;
+  border-color: #eeeeee;
+  border-top-style: solid;
+}
+.resultname {
+  text-align: left;
+  padding-left: 8px;
+}
+.dead {
+  opacity: 0.5;
 }
 </style>

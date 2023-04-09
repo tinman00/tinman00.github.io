@@ -1,11 +1,12 @@
 <script setup>
 import { ref } from "vue"
 import Game from "./components/Game.vue"
-const inputText = ref("1\n2")
+const inputText = ref("")
 const input = ref("")
 const runGame = ref(false)
 const fastOutput = ref(false)
 const showInputPanel = ref(true)
+const palceHolder = ref('输入不带空行的多个名字进行混战\n输入空行可以分队\n输入一个名字或在最前面输入单独一行\"!test!\"可以获得名字的详细信息')
 function RunArena() {
   showInputPanel.value = false
   input.value = inputText.value
@@ -25,7 +26,7 @@ function ShowPanel() {
     <div v-if="showInputPanel" id="inputPanel" class="panel vertical">
       <div id="inputTitle" class="paneltitle">输入框</div>
       <div id="textdiv">
-        <textarea v-model="inputText"></textarea>
+        <textarea v-model="inputText" :placeholder="palceHolder"></textarea>
       </div>
       <div id="startBar" class="startbar">
         <button class="startbtn" @click="RunArena">开始</button>
@@ -89,7 +90,6 @@ button {
 #textdiv {
   width:100%;
   height:320px;
-  -webkit-flex: 1 1 320px ;
   flex: 1 1 320px;
 }
 textarea {
@@ -99,6 +99,7 @@ textarea {
   resize: none;
   box-sizing: border-box;
   border: none;
+  padding: 5px;
 }
 .startbar {
   width: 100%;

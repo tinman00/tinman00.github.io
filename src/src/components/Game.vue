@@ -12,6 +12,10 @@ const speedRequest = computed(() => {return props.fast})
 const players = ref("")
 const running = ref(false)
 const iframedom = ref(null)
+const GameMode = {
+  Normal: 0,
+  Test: 1
+}
 let gameId = 0
 watch(runRequest, (newRequest) => {
   if (newRequest) {
@@ -28,7 +32,7 @@ watch(speedRequest, (newRequest) => {
 })
 function RunGame(input) {
   let window = iframedom.value.contentWindow
-  window.postMessage({type: "rungame", msg: input, id: ++gameId}, "*")
+  window.postMessage({type: "rungame", msg: input, id: ++gameId, mode: GameMode.Normal}, "*")
   players.value = input
 }
 function SpeedUp() {
