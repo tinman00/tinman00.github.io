@@ -60,6 +60,8 @@ const BuffId = {
   //#region OnTime
   Rapid: 0,
   Stun: 1,
+  KnockUp: 2,
+  Frozen: 3,
   //#endregion
 }
 var buffCount = 20
@@ -116,54 +118,63 @@ var SHA = {
   },
   GetRandom: function GetRandom(seq, x) {
     return this.GetNext(seq[x % 16], Math.floor(x / 16) + 1)
+  },
+  GetRandomSeq: function GetRandomSeq(seq, len = 256) {
+    let ret = new Array()
+    for (let i = 1; i <= len; i++) {
+      ret.push(this.GetRandom(seq, i))
+    }
+    return ret
   }
 }
 //#endregion
 //#region buff
-function GetBuffList() {
+function GetBuffList(o) {
   let list = new Array()
   let l = new Array()
   for (let j = 0; j < buffCount; j++) {
-    l.push(new EnchantmentBuff(0, null, true))
+    l.push(new EnchantmentBuff(0, o, true, j))
   }
   list.push(l)
   l = new Array()
   for (let j = 0; j < buffCount; j++) {
-    l.push(new OnBeforeDamageBuff(0, null, true))
+    l.push(new OnBeforeDamageBuff(0, o, true, j))
   }
   list.push(l)
   l = new Array()
   for (let j = 0; j < buffCount; j++) {
-    l.push(new OnBeforeDefendBuff(0, null, true))
+    l.push(new OnBeforeDefendBuff(0, o, true, j))
   }
   list.push(l)
   l = new Array()
   for (let j = 0; j < buffCount; j++) {
-    l.push(new OnDealDamageBuff(0, null, true))
+    l.push(new OnDealDamageBuff(0, o, true, j))
   }
   list.push(l)
   l = new Array()
   for (let j = 0; j < buffCount; j++) {
-    l.push(new OnDefendBuff(0, null, true))
+    l.push(new OnDefendBuff(0, o, true, j))
   }
   list.push(l)
   l = new Array()
   for (let j = 0; j < buffCount; j++) {
-    l.push(new OnTimeBuff(0, null, true))
+    l.push(new OnTimeBuff(0, o, true, j))
   }
   list.push(l)
   return list
 }
 // While creating new Buff, enum BuffId should be updated too
 class Buff {
-  constructor(_lastTime, _owner, _isPermanent = false) {
+  constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined) {
     this.lastTime = _lastTime
     this.owner = _owner
     this.isPermanent = _isPermanent
-    this.buffId = undefined
+    this.buffId = _buffid
   }
   Register() {}
+  RegisterContent() {}
   Destroy() {}
+  DestroyContent() {}
   Update(deltaTime) {
     if (!this.isPermanent) {
       if (this.lastTime > deltaTime) {
@@ -171,88 +182,123 @@ class Buff {
       } else {
         this.lastTime = 0
         this.Destroy()
+        this.DestroyContent()
       }
     }
   }
   Impact() {}
 }
 class EnchantmentBuff extends Buff {
-  constructor(_lastTime, _owner, _isPermanent = false) {
-    super(_lastTime, _owner, _isPermanent)
+  constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined) {
+    super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.Enchantment
-    this.buffId = undefined
+  }
+  Destroy() {
+    this.owner.buffList[this.type][this.buffId] = new EnchantmentBuff(0, null, true)
   }
 }
 class OnBeforeDamageBuff extends Buff {
-  constructor(_lastTime, _owner, _isPermanent = false) {
-    super(_lastTime, _owner, _isPermanent)
+  constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined) {
+    super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.OnBeforeDamage
-    this.buffId = undefined
+  }
+  Destroy() {
+    this.owner.buffList[this.type][this.buffId] = new OnBeforeDamageBuff(0, null, true)
   }
   Impact(dmg, target = null) { return dmg }
 }
 class OnBeforeDefendBuff extends Buff {
-  constructor(_lastTime, _owner, _isPermanent = false) {
-    super(_lastTime, _owner, _isPermanent)
+  constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined) {
+    super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.OnBeforeDefend
-    this.buffId = undefined
+  }
+  Destroy() {
+    this.owner.buffList[this.type][this.buffId] = new OnBeforeDefendBuff(0, null, true)
   }
   Impact(dmg, Attacker = null) { return dmg }
 }
 class OnDealDamageBuff extends Buff {
-  constructor(_lastTime, _owner, _isPermanent = false) {
-    super(_lastTime, _owner, _isPermanent)
+  constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined) {
+    super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.OnDealDamage
-    this.buffId = undefined
+  }
+  Destroy() {
+    this.owner.buffList[this.type][this.buffId] = new OnDealDamageBuff(0, null, true)
   }
   Impact(dmg, target = null) {}
 }
 class OnDefendBuff extends Buff {
-  constructor(_lastTime, _owner, _isPermanent = false) {
-    super(_lastTime, _owner, _isPermanent)
+  constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined) {
+    super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.OnDefend
-    this.buffId = undefined
+  }
+  Destroy() {
+    this.owner.buffList[this.type][this.buffId] = new OnDefendBuff(0, null, true)
   }
   Impact(dmg, Attacker = null) {}
 }
 class OnTimeBuff extends Buff {
-  constructor(_lastTime, _owner, _isPermanent = false, _impactFreq) {
-    super(_lastTime, _owner, _isPermanent)
+  constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined, _impactFreq = null) {
+    super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.OnTime
     this.impactFreq = _impactFreq
     this.currentTime = 0
-    this.buffId = undefined
+  }
+  Destroy() {
+    this.owner.buffList[this.type][this.buffId] = new OnTimeBuff(0, this.owner, true)
   }
   Impact(deltaTime) { return deltaTime }
 }
 class Rapid extends OnTimeBuff {
   constructor(_lastTime, _owner, _rate, _isPermanent = false, _impactFreq = null) {
-    super(_lastTime, _owner, _isPermanent, _impactFreq)
-    this.type = BuffType.OnTime
-    this.impactFreq = _impactFreq
-    this.currentTime = 0
-    this.buffId = 0
+    super(_lastTime, _owner, _isPermanent, BuffId.Rapid, _impactFreq)
     this.rate = _rate
+    this.name = '敏捷'
   }
-  Destroy() {
-    this.owner.buffList[BuffType.OnTime][BuffId.Rapid] = new OnTimeBuff(0, null, true)
+  RegisterContent() {
+    Renderer.Print(Transfer('[0] 获得[敏捷]效果，速度提升了', this.owner), 300, true)
+  }
+  DestroyContent() {
+    Renderer.Print(Transfer('[0] 从[敏捷]中解除', this.owner), 300, true)
   }
   Impact(deltaTime) { return deltaTime * this.rate }
 }
 class Stun extends OnTimeBuff {
   constructor(_lastTime, _owner, _rate, _isPermanent = false, _impactFreq = null) {
-    super(_lastTime, _owner, _isPermanent, _impactFreq)
-    this.type = BuffType.OnTime
-    this.impactFreq = _impactFreq
-    this.currentTime = 0
-    this.buffId = 1
+    super(_lastTime, _owner, _isPermanent, BuffId.Stun, _impactFreq)
+    this.name = '眩晕'
   }
-  Register() {
+  RegisterContent() {
     Renderer.Print(Transfer('[1] [眩晕]了', null, this.owner), 300, true)
   }
-  Destroy() {
-    this.owner.buffList[BuffType.OnTime][BuffId.Stun] = new OnTimeBuff(0, null, true)
+  DestroyContent() {
     Renderer.Print(Transfer('[0] 从[眩晕]中解除', this.owner), 300, true)
+  }
+  Impact(deltaTime) { return 0 }
+}
+class KnockUp extends OnTimeBuff {
+  constructor(_lastTime, _owner, _rate, _isPermanent = false, _impactFreq = null) {
+    super(_lastTime, _owner, _isPermanent, BuffId.KnockUp, _impactFreq)
+    this.name = '击飞'
+  }
+  RegisterContent() {
+    Renderer.Print(Transfer('[1] 被[击飞]了', null, this.owner), 300, true)
+  }
+  DestroyContent() {
+    Renderer.Print(Transfer('[0] 从[击飞]中解除', this.owner), 300, true)
+  }
+  Impact(deltaTime) { return 0 }
+}
+class Frozen extends OnTimeBuff {
+  constructor(_lastTime, _owner, _rate, _isPermanent = false, _impactFreq = null) {
+    super(_lastTime, _owner, _isPermanent, BuffId.Frozen, _impactFreq)
+    this.name = '冻结'
+  }
+  RegisterContent() {
+    Renderer.Print(Transfer('[1] 被[冻结]了', null, this.owner), 300, true)
+  }
+  DestroyContent() {
+    Renderer.Print(Transfer('[0] 从[冻结]中解除', this.owner), 300, true)
   }
   Impact(deltaTime) { return 0 }
 }
@@ -348,6 +394,27 @@ class ActionSkill extends Skill {
   }
   Introduction() {}
 }
+class ComboSkill extends ActionSkill {
+  constructor() {
+    super()
+    this.type = '组合技能'
+    this.stage = 0
+    this.targets = []
+  }
+  Use(targets) {
+    if (this.stage == 0) {
+      this.currentCD -= this.CD
+      this.isReady = this.currentCD >= this.CD
+    }
+    this.Act(targets)
+  }
+  InterruptContent() {}
+  Interrupt() {
+    this.InterruptContent()
+    this.owner.combo = null
+    this.stage = 0
+  }
+}
 class BasicAttack extends ActionSkill {
   constructor() {
     super()
@@ -419,12 +486,46 @@ class MagicLaser extends ActionSkill {
     let o = this.owner, stat = o.GetStat()
     let atp = stat[Stat.mag], target = targets[0]
     Renderer.Print(Transfer(`[0] 发射[魔法激光]，`, o), 500)
-    let dmg = target.CalcDamage([new MagicDamage(atp * 0.6), new TrueDamage(atp * (0.6 + 0.2 * (this.level - 1) / 100))])
+    let dmg = target.CalcDamage([new MagicDamage(atp * 0.6 + 100)])
     target.DealDamage(o, dmg, SourceType.Ranged)
   }
   Introduction() {
     this.Intro()
-    Renderer.Print(Transfer("效果：造成 [2] 点伤害", null, null, [new MagicDamage('60%魔'), new TrueDamage(`${Math.ceil((0.6 + 0.2 * (this.level - 1) / 100) * 100)}%魔`)]))
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害", null, null, [new MagicDamage('60%魔+100')]))
+    Renderer.EndLine()
+  }
+}
+class Freeze extends ComboSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(3000)
+    this.name = '冰封'
+  }
+  Act(targets) {
+    if (this.stage == 0) {
+      let o = this.owner
+      this.targets = targets
+      Renderer.Print(Transfer(`[0] 开始吟唱[冰封]术！`, o), 500)
+      Renderer.EndLine()
+      this.owner.combo = this
+      this.stage++
+    } else if (this.stage == 1) {
+      let o = this.owner, stat = o.GetStat()
+      let atp = stat[Stat.mag], target = this.targets[0]
+      Renderer.Print(Transfer(`[0] 发动[冰封]术！`, o), 500)
+      let dmg = target.CalcDamage([new MagicDamage(atp * 0.4)])
+      target.DealDamage(o, dmg, SourceType.Ranged)
+      target.UpdateBuff(new Frozen(2500, target))
+      this.owner.combo = null
+      this.stage = 0
+    }
+  }
+  InterruptContent() {
+    Renderer.Print(Transfer(`[0] 的吟唱被打断了！`, this.owner), 500)
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害，并使对手[冻结]2.5回合", null, null, [new MagicDamage('40%魔')]))
     Renderer.EndLine()
   }
 }
@@ -437,10 +538,9 @@ class RapidChant extends ActionSkill {
   Act(targets) {
     let o = this.owner, stat = o.GetStat()
     Renderer.Print(Transfer(`[0] 吟唱咒语[快速吟唱]，`, o), 500)
-    Renderer.Print(Transfer(`[0] 的速度提升了！`, o), 300)
     Renderer.EndLine()
     let rate = 2.5 + (this.level - 1) / 200
-    o.AddBuff(new Rapid(2000, o, rate))
+    o.UpdateBuff(new Rapid(2000, o, rate))
   }
   Introduction() {
     this.Intro()
@@ -480,14 +580,34 @@ class Knock extends ActionSkill {
   Act(targets) {
     let o = this.owner, stat = o.GetStat()
     let atp = stat[Stat.atk], target = targets[0]
-    let dmg = target.CalcDamage([new PhysicalDamage(atp)])
+    let dmg = 0.8 * target.CalcDamage([new PhysicalDamage(atp)])
     Renderer.Print(Transfer(`[0] 挥剑[敲击]，`, o), 500)
     target.DealDamage(o, dmg, SourceType.Melee)
-    target.AddBuff(new Stun(500, target))
+    target.UpdateBuff(new Stun(500, target))
   }
   Introduction() {
     this.Intro()
-    Renderer.Print(Transfer("效果：造成 [2] 点伤害，并使对手眩晕0.5回合", null, null, [new PhysicalDamage('100%攻')]))
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害，并使对手[眩晕]0.5回合", null, null, [new PhysicalDamage('80%攻')]))
+    Renderer.EndLine()
+  }
+}
+class SlashUp extends ActionSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(4000)
+    this.name = '上挑'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let atp = 0.8 * stat[Stat.atk], target = targets[0]
+    let dmg = target.CalcDamage([new PhysicalDamage(atp)])
+    Renderer.Print(Transfer(`[0] 挥剑[上挑]，`, o), 500)
+    target.DealDamage(o, dmg, SourceType.Melee)
+    target.UpdateBuff(new KnockUp(500, target))
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害，并使对手被[击飞]0.5回合", null, null, [new PhysicalDamage('80%攻')]))
     Renderer.EndLine()
   }
 }
@@ -618,7 +738,8 @@ class Kight extends Profession {
     let tier2 = new Array()
     let tier3 = new Array()
     tier0.push(new BasicSlash())
-    tier1.push(new Knock())
+    tier2.push(new Knock())
+    tier2.push(new SlashUp())
     tier3.push(new StormSlash())
     list = [tier0, tier1, tier2, tier3]
     return list
@@ -646,6 +767,7 @@ class Wizard extends Profession {
     tier0.push(new BasicMissle())
     tier1.push(new RapidChant())
     tier1.push(new MagicLaser())
+    tier2.push(new Freeze())
     list = [tier0, tier1, tier2, tier3]
     return list
   }
@@ -672,6 +794,7 @@ class Group {
     this.membersDead = new Array()
     this.die = true
     this.clanName = ''
+    this.clanIcon = ''
   }
   Update() {
     if (this.members.length != 0) {
@@ -699,6 +822,7 @@ class Group {
     } else {
       if (this.clanName == '') {
         this.clanName = plr.name
+        this.clanIcon = IconCanvas.GetIcon(this.clanName)
       }
       let pos = players.indexOf(this.counter) + this.members.length + 1
       players.splice(pos, 0, plr)
@@ -738,12 +862,13 @@ class Plr {
     this.renderAlive = _type == CounterType.Player ? true : false;
     this.passiveSkillList = new Array();
     this.actionSkillList = new Array();
-    this.buffList = GetBuffList();
+    this.buffList = GetBuffList(this);
     this.SP = 0;
     this.group = _group;
     this.type = _type;
     this.damageDealt = [0, 0, 0];
-    this.icon = ''
+    this.icon = '';
+    this.combo = null;
   }
   GetRandom() {
     return SHA.GetRandom(this.attr, this.currentRand++);
@@ -860,6 +985,9 @@ class Plr {
       atp += d.atp
     }
     if (atp > 0) {
+      if (this.combo) {
+        this.combo.Interrupt()
+      }
       if (srcType == SourceType.Ranged && dex * dex > this.GetRand(36000)) {
         Renderer.Print(Transfer(`[1] [闪避]了此攻击`, null, this, [], this.health, this.health), 300, false, []);
       } else if (srcType == SourceType.Melee && dex * dex > this.GetRand(3000) && str * str > this.GetRand(20000)) {
@@ -901,18 +1029,24 @@ class Plr {
     }
     // console.log(deltaTime)
     if (this.SP >= 1000) {
-      for (let skl of this.actionSkillList) {
-        if (skl.isReady) {
-          skls.push(skl);
-        }
-      }
-      // console.log(this, skls)
-      if (skls.length > 0) {
-        let skl = skls[this.GetRand(skls.length)];
-        // console.log(skls, skl)
+      if (this.combo != null) {
+        let skl = this.combo;
         let targets = skl.SelectTargets();
         skl.Use(targets);
-        // skl.Act(targets)
+      } else {
+        for (let skl of this.actionSkillList) {
+          if (skl.isReady) {
+            skls.push(skl);
+          }
+        }
+        // console.log(this, skls)
+        if (skls.length > 0) {
+          let skl = skls[this.GetRand(skls.length)];
+          // console.log(skls, skl)
+          let targets = skl.SelectTargets();
+          skl.Use(targets);
+          // skl.Act(targets)
+        }
       }
       this.SP -= 1000;
     }
@@ -921,6 +1055,16 @@ class Plr {
     this.buffList[buff.type][buff.buffId].Destroy()
     this.buffList[buff.type][buff.buffId] = buff
     buff.Register()
+    buff.RegisterContent()
+  }
+  UpdateBuff(buff) {
+    if (this.buffList[buff.type][buff.buffId].name != buff.name) {
+      this.AddBuff(buff)
+    } else {
+      this.buffList[buff.type][buff.buffId].Destroy()
+      this.buffList[buff.type][buff.buffId] = buff
+      buff.Register()
+    }
   }
   UpdateRenderHealth(hp) {
     this.renderHealth = hp;
@@ -1285,9 +1429,9 @@ var Render = {
     }
     return str
   },
-  Name: function(name, clanName) {
+  Name: function(name) {
     let str = ''
-    str += `<span class="name">${name}@${this.SSText(clanName)}</span>`
+    str += `<span class="name">${name}</span>`
     return str
   },
   Icon: function(_class = '') {
@@ -1297,16 +1441,18 @@ var Render = {
   },
   Player: function(plr, oldhp = 0, newhp = 0) {
     let str = ''
+    str += this.Icon(plr.group.clanIcon)
     str += this.Icon(plr.icon)
     str += this.HealthBar(plr, oldhp, newhp)
-    str += this.Name(plr.name, plr.group.clanName)
+    str += this.Name(plr.name)
     return this.Span(str)
   },
   PlayerForRender: function(plr, oldhp = 0, newhp = 0) {
     let str = ''
+    str += this.Icon(plr.group.clanIcon)
     str += this.Icon(plr.icon)
     str += this.HealthBarUnhidden(plr, oldhp, newhp)
-    str += this.Name(plr.name, plr.group.clanName)
+    str += this.Name(plr.name)
     if (newhp == 0) {
       return this.Span(str, 'dead')
     }
@@ -1396,6 +1542,7 @@ var IconCanvas = {
   Init: function() {
     this.cCount = this.sig_colors.length
     this.LoadPattern()
+    this.Initcdif()
   },
   sig_colors: [
     [255, 255, 255],
@@ -1420,12 +1567,39 @@ var IconCanvas = {
     [0, 144, 0],
     [144, 0, 0],
   ],
+  cdif: [],
+  Initcdif: function Initcdif() {
+    let dds = new Array(this.cCount)
+    let sig_colors = this.sig_colors
+    for (let i = 0; i < this.cCount; ++i) {
+      dds[i] = new Array(this.cCount);
+      dds[i][i] = 0.0;
+    }
+    for (let i = 1; i < this.cCount; ++i) {
+      for (let j = 0; j < i; ++j) {
+        let dr = (sig_colors[i][0] - sig_colors[j][0]) * 0.3;
+        let dg = (sig_colors[i][1] - sig_colors[j][1]) * 0.4;
+        let db = (sig_colors[i][2] - sig_colors[j][2]) * 0.25;
+        let dl = (sig_colors[i][0] * 0.15 +
+                sig_colors[i][0] * 0.25 +
+                sig_colors[i][0] * 0.1) -
+            (sig_colors[j][0] * 0.15 +
+                sig_colors[j][0] * 0.25 +
+                sig_colors[j][0] * 0.1);
+        let d = Math.sqrt(dr * dr + dg * dg + db * db + dl * dl);
+        dds[j][i] = d;
+        dds[i][j] = d;
+      }
+    }
+    this.cdif = dds;
+  },
   cCount: 0,
+  sigCount: 0,
   pattern: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACAAgMAAAC+UIlYAAAADFBMVEX/AAD/AP8A/wD///8SU+EWAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH3wwaCg0BGtaVrQAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAADHUlEQVRYw+2WPY6jMBTHLejhMNOu4BRkpTTp5xIgzQGmilKmSjFUkbZFCpp6tN3mHGikpAK8/r/nZwhxMlllViOtFsWxsX/2+7SNKj941E7r/lr5Q6BNuW5iqqtv3xLlBtKW67jpd3XY75SyAF4wAwMAwpqLAVgEADuDANOu4iahCQ7AIAaUSrBalbYEDCI+BESPiyJk0KukmCnlzMybHHVXLD4M9w35oIJC6R4FbVm6UNw2QB0UoQcIawGaoIg9QNwI0AZF6gHSVgAdFNoDmH4BXp88gOl7FeD92QOYvvcTYDBvAAE5ET4AYpySPgCKOjO9gDHVOcoLGGc5V3sB424XLC9gAvYZ+WAT1Joa0KahxEWWx/0AkKntAJhBQANApjYEcDZhx+kB2JKpdTQA2GEjoGLzEidCN0kVW4BmKCilegGedRttU0RTgBpKhQ544iC+DkADpWIHFJwGwQCY5SFGACwPMU5JUtAoKkDFZicjoI5gqjOTze5HAOeFA2r0hWOAM+tiLCQ3z2LxGedDnVSjnNwqFU3OKDho6KDTltu049SuhYtT3os4Bu0BKjuOrTCFdjPaOERHVinMxip0HsixPPKLYvmKTxS5M0aeVWxBnWzjJqrCOhks4B3nAAwCOgNEBJaXg4vFWBGiJBSUg4sVFSWtmc5UAGyqNdM6CsvKwWWdZR01cfXI3dbVk2BNA/Yp+WCX5TSPxncFiZAXB5ivALIGXwM+ALcuANQ/Ht5+ngHbsI4AoK7eHpKrK5zcmxd18FkhLicdrgGkw00ioOhVJcfA2Eynw6UVnA5j4CYzT4J1fz5cGnDfD38RkM+DLwTc7f/VwLXb/37g/nz4D/yTwEuWPWbmKTN6ynI5K7P5JkNZZtlMLbWe5Vp3m1x35jdfLg6zfL/q8l/fu4XWB7XW+ghgpQHoPTrzwwJtKoo6TGPNHUcZcIA0FlwfLgLTIitfBES3rwROlLQvh8VkkDyJP+PFPZy0niyPmly90XoON6/sLDuhWx8WRwrWS949IlAIGIK1ybs5grXer44U7pKjXdKfCTe9I9zzzew3hQ1VpfX/zmMAAAAASUVORK5CYII=',
   datas: new Array(),
   borders: new Array(),
   masks: new Array(),
-  LoadPattern: function() {
+  LoadPattern: function LoadPattern() {
     let img = new Image()
     img.src = this.pattern
     let canvas = document.createElement('canvas')
@@ -1476,14 +1650,117 @@ var IconCanvas = {
       this.masks.push(mask);
     }
   },
+  drawShape: function drawShape(c, shapeData, color) {
+    let shapeCanvas = document.createElement('canvas')
+    shapeCanvas.width = 16
+    shapeCanvas.height = 16
+    let ctx = shapeCanvas.getContext("2d")
+    let shapeImage = ctx.getImageData(0, 0, 16, 16)
+    let dpos = 0;
+    let ipos = 0;
+    for (let y = 0; y < 16; ++y) for (let x = 0; x < 16; ++x) {
+      if (shapeData[dpos] > 0) {
+        shapeImage.data[ipos] = color[0];
+        shapeImage.data[ipos + 1] = color[1];
+        shapeImage.data[ipos + 2] = color[2];
+        shapeImage.data[ipos + 3] = shapeData[dpos];
+      } else {
+        shapeImage.data[ipos + 3] = 0;
+      }
+      dpos++;
+      ipos += 4;
+    }
+
+    ctx.putImageData(shapeImage, 0, 0);
+    c.drawImage(shapeCanvas, 0, 0);
+  },
+  drawBorder: function drawBorder(c, b) {
+    this.drawShape(c, this.borders[b], [64, 64, 64]);
+    var img = c.getImageData(0, 0, 16, 16);
+    let mask = this.masks[b];
+    for (let i = 0; i < 256; ++i) {
+      img.data[i * 4 + 3] = mask[i];
+    }
+    c.putImageData(img, 0, 0);
+  },
   GetIcon: function(name) {
     let seq = SHA.Get(name)
-    let color = [SHA.GetRandom(seq, 1) % this.cCount, SHA.GetRandom(seq, 1) % this.cCount, SHA.GetRandom(seq, 1) % this.cCount]
+    let colors = SHA.GetRandomSeq(seq)
+    let borders = this.borders
+    let datas = this.datas
     let canvas = document.createElement('canvas')
+    canvas.width = 16
+    canvas.height = 16
+    let pos = 0;
+    let borderStyle = colors[pos++] % borders.length;
+    let shapeSorted = [];
+    shapeSorted.push(colors[pos++] % datas.length);
 
+    let shape2 = colors[pos++] % datas.length;
+    if (shape2 == shapeSorted[0]) {
+      // second shape should be different
+      shape2 = colors[pos++] % datas.length;
+    }
+    shapeSorted.push(shape2);
+
+    if (colors[pos++] < 4) {
+      shapeSorted.push(colors[pos++] % datas.length);
+      if (colors[pos++] < 64) {
+        shapeSorted.push(colors[pos++] % datas.length);
+      }
+    }
+
+
+    let ctx = canvas.getContext("2d");
+    let brights = [];
+    // drag bg
+    let bgCIdx = colors[pos++] % (this.cCount-6);
+
+    let bgColor = this.sig_colors[bgCIdx];
+    ctx.fillStyle = `rgb(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]})`;
+    ctx.fillRect(0, 0, 16, 16);
+
+    let usedColors = [];
+    let validColor = (c) => {
+      if (usedColors.length > 0 && c == bgCIdx && shapeSorted[0] != shapeSorted[1]) {
+        return true;
+      }
+      if (this.cdif[c][bgCIdx] < 90.0) return false;
+      for (let n in usedColors) {
+        if (n == c) return true;
+      }
+      for (let n in usedColors) {
+        if (this.cdif[c][n] < 90.0) return false;
+      }
+      return true;
+    }
+    for (let i = 0; i < shapeSorted.length; ++i) {
+      let c = colors[pos++] % this.cCount;
+      while (!validColor(c)) {
+        c = colors[pos++] % this.cCount;
+      }
+      usedColors.push(c);
+      this.drawShape(ctx, datas[shapeSorted[i]], this.sig_colors[c]);
+    }
+    this.drawBorder(ctx, borderStyle);
+    this.loadCssCode(`.sig${++this.sigCount}{background-image: url("${canvas.toDataURL()}")}`);
+    return `sig${this.sigCount}`;
+  },
+  loadCssCode: function loadCssCode(code){
+    let style = document.createElement('style');
+    let head = document.head || document.getElementsByTagName('head')[0]
+    style.type = 'text/css';
+    if (style.styleSheet) {
+      style.styleSheet.cssText = code
+    } else {
+      let textNode = document.createTextNode(code)
+      style.appendChild(textNode)
+    }
+    head.appendChild(style);
   },
 }
 IconCanvas.Init()
+// console.log(IconCanvas.GetIcon('1'))
 //#endregion
 
 </script>
@@ -1491,6 +1768,7 @@ IconCanvas.Init()
 <template>
   <div id="sidePanel" :class="sidepanel">
     <div class="plrlist" v-for="plr in rawPlayers" :style="{opacity: plr.renderAlive ? 1 : 0.5}">
+      <div :class="`icon ${plr.group.clanIcon}`"></div>
       <div :class="`icon ${plr.icon}`"></div>
       <div class="name">{{ plr.name }}</div>
       <div class="maxhp" :style="{width: Render.HPToWidth(plr.maxHealth)}">
@@ -1617,6 +1895,7 @@ span {
  position: absolute;
 }
 .icon {
+  margin-left: 2px;
   position: relative;
   width: 16px;
   height: 16px;
