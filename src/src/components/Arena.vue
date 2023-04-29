@@ -1547,7 +1547,6 @@ var IconCanvas = {
   sig_colors: [
     [255, 255, 255],
     [255, 255, 255],
-    [0, 0, 0],
     [0, 180, 0],
     [0, 255, 0],
     [255, 0, 0],
@@ -1601,53 +1600,55 @@ var IconCanvas = {
   masks: new Array(),
   LoadPattern: function LoadPattern() {
     let img = new Image()
-    img.src = this.pattern
     let canvas = document.createElement('canvas')
     canvas.width = 128
     canvas.height = 128
     let ctx = canvas.getContext('2d')
-    ctx.drawImage(img, 0, 0)
-    let bytes = ctx.getImageData(0, 0, 128, 128).data
-    for (let i = 0; i < 38; ++i) {
-      let xp = i % 8;
-      let yp = Math.floor(i / 8);
-      let startpos = xp * 64 + yp * 8192;
-      let data = new Array();
-      for (let y = 0; y < 16; ++y) {
-        for (let x = 0; x < 16; ++x) {
-          let cpos = startpos + x * 4 + y * 512;
-          if (bytes[cpos] > bytes[cpos + 1]) {
-          // red > green
-            data.push(bytes[cpos]);
-          } else {
-            data.push(0);
+    img.src = this.pattern
+    img.onload = function() {
+      ctx.drawImage(img, 0, 0)
+      let bytes = ctx.getImageData(0, 0, 128, 128).data
+      for (let i = 0; i < 38; ++i) {
+        let xp = i % 8;
+        let yp = Math.floor(i / 8);
+        let startpos = xp * 64 + yp * 8192;
+        let data = new Array();
+        for (let y = 0; y < 16; ++y) {
+          for (let x = 0; x < 16; ++x) {
+            let cpos = startpos + x * 4 + y * 512;
+            if (bytes[cpos] > bytes[cpos + 1]) {
+            // red > green
+              data.push(bytes[cpos]);
+            } else {
+              data.push(0);
+            }
           }
         }
+        IconCanvas.datas.push(data);
       }
-      this.datas.push(data);
-    }
-    // borders
-    for (let i = 0; i < 8; ++i) {
-      let startpos = i * 64 + 7 * 8192;
-      let border = [];
-      let mask = [];
-      for (let y = 0; y < 16; ++y) for (let x = 0; x < 16; ++x) {
-        let cpos = startpos + x * 4 + y * 512;
-        if (bytes[cpos] > bytes[cpos + 1]) {
-          // red > green
-          border.push(bytes[cpos]);
-        } else {
-          border.push(0);
+      // borders
+      for (let i = 0; i < 8; ++i) {
+        let startpos = i * 64 + 7 * 8192;
+        let border = [];
+        let mask = [];
+        for (let y = 0; y < 16; ++y) for (let x = 0; x < 16; ++x) {
+          let cpos = startpos + x * 4 + y * 512;
+          if (bytes[cpos] > bytes[cpos + 1]) {
+            // red > green
+            border.push(bytes[cpos]);
+          } else {
+            border.push(0);
+          }
+          if (bytes[cpos + 1] > bytes[cpos + 2]) {
+            // green > blue
+            mask.push(255 - bytes[cpos + 1]);
+          } else {
+            mask.push(255);
+          }
         }
-        if (bytes[cpos + 1] > bytes[cpos + 2]) {
-          // green > blue
-          mask.push(255 - bytes[cpos + 1]);
-        } else {
-          mask.push(255);
-        }
+        IconCanvas.borders.push(border);
+        IconCanvas.masks.push(mask);
       }
-      this.borders.push(border);
-      this.masks.push(mask);
     }
   },
   drawShape: function drawShape(c, shapeData, color) {
@@ -1684,6 +1685,15 @@ var IconCanvas = {
     c.putImageData(img, 0, 0);
   },
   GetIcon: function(name) {
+    // console.log(`check data`)
+    // for (let i = 0; i < this.datas.length; i++) {
+    //   let allzero = true;
+    //   for (let j = 0; j < this.datas[i].length; j++)
+    //   if (this.datas[i][j] != 0) allzero = false;
+      
+    //   console.log(this.datas[i])
+    //   console.log(allzero)
+    // }
     let seq = SHA.Get(name)
     let colors = SHA.GetRandomSeq(seq)
     let borders = this.borders
@@ -1722,9 +1732,9 @@ var IconCanvas = {
 
     let usedColors = [];
     let validColor = (c) => {
-      if (usedColors.length > 0 && c == bgCIdx && shapeSorted[0] != shapeSorted[1]) {
-        return true;
-      }
+      // if (usedColors.length > 0 && c == bgCIdx && shapeSorted[0] != shapeSorted[1]) {
+      //   return true;
+      // }
       if (this.cdif[c][bgCIdx] < 90.0) return false;
       for (let n in usedColors) {
         if (n == c) return true;
@@ -1744,6 +1754,7 @@ var IconCanvas = {
     }
     this.drawBorder(ctx, borderStyle);
     this.loadCssCode(`.sig${++this.sigCount}{background-image: url("${canvas.toDataURL()}")}`);
+    
     return `sig${this.sigCount}`;
   },
   loadCssCode: function loadCssCode(code){
@@ -1751,6 +1762,7 @@ var IconCanvas = {
     let head = document.head || document.getElementsByTagName('head')[0]
     style.type = 'text/css';
     if (style.styleSheet) {
+      console.log(1)
       style.styleSheet.cssText = code
     } else {
       let textNode = document.createTextNode(code)
@@ -1760,7 +1772,6 @@ var IconCanvas = {
   },
 }
 IconCanvas.Init()
-// console.log(IconCanvas.GetIcon('1'))
 //#endregion
 
 </script>
