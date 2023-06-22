@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from '@vue/reactivity';
-import sha512 from 'js-sha512'
+import sha512, { sha512_224 } from 'js-sha512'
 import { getTransitionRawChildren, onMounted, onUnmounted, ref, watch } from 'vue';
 const props = defineProps({
   playerString: String,
@@ -32,10 +32,13 @@ const CounterType = {
 }
 const GameMode = {
   Normal: 0,
-  Test: 1
+  Test: 1,
+  WinRate: 2,
 }
 const SpecialName = {
-  Test: '!test!'
+  Test: '!test!',
+  WinRate: "!rate!", 
+  SetSeed: "seed:",
 }
 const BuffType = {
   Enchantment: 0,
@@ -48,6 +51,8 @@ const BuffType = {
 var buffTypeCount = 6
 const BuffId = {
   //#region Enchantment
+  KnightSpirit: 0,
+  OnFire: 1,
   //#endregion
   //#region OnBeforeDamage
   //#endregion
@@ -62,9 +67,20 @@ const BuffId = {
   Stun: 1,
   KnockUp: 2,
   Frozen: 3,
+  Poison: 4,
   //#endregion
 }
 var buffCount = 20
+const BuffIconUrl = {
+  Rapid: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAHJJREFUOI3NkrENwDAIBD+SV/EI3n+AjJBVLOEKCQif4Cqh5p4zBvi6jo1eybhWBHBeEwAwukdYgCigFUEWIGwaM7A7cFNHbyAWbm+pl4WZ+mOABaNVOYCAt29/NdAw9pSYKNqcGKRHVzJgMCtBuMJ/1wJMgy2ZgoWJ8QAAAABJRU5ErkJggg==",
+  Stun: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAGxJREFUOI2VkkESwCAIA0vH/3+ZXiqjmATMEcIaRXuwnNSN1LdBNqzAdZP5xlI0ZvpF42czS+LMQxsCEr63MKttuALMNwkjk0qwnnYNKE+eGqKHIDBNd43SgyAIdNTz78sRW1eQ0SohYgcScx9DYSL+zKlq8QAAAABJRU5ErkJggg==",
+  KnockUp: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAIJJREFUOI1jYBhowEiC2v/Y9LIQqzF5NkT/j8uPGJZOkodL4jMARSMMcOjKofBxGfA/Ou8hhmJsgAmXxNJJ8gw/Lj9i+HH5EVkGMDIwMDAi+xUG0A3E6QJsAD0AYTbhAijhgKQZRQ8uA4jSjMsAojVjE/yPI8Hg9CqyBHpSxatx8AAArtg6GyvXzVYAAAAASUVORK5CYII=",
+  Frozen: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAHBJREFUOI1jYKAlOH37z39CapgIaU6e/R+vIVgNQLcZnyEYBuByNi5DUAzA5+cMh79Y5RmRNc84wAxXjA4mTH7KwMDAwMChK8cwN5URro8Fm23IBsE04gI4Y4FYMIgMMFVlYcQWeMgAPQCp64KhawAAxdUy4FDwpbYAAAAASUVORK5CYII=",
+  KnightSpirit: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAZhJREFUOI29k7FrU1EUxn/nvpe8+uwo1pglcXAQpdaCrUP/hm7SwX+gQ4IgiENLG8RBCGRTcFDIJDg5tdCpq4OguKaWNM+2BmlCRclL7j0OwdDXJLQunvHwfb/7ncO58L/q8M5d3Z29p6f7ch7z1pU5dcDtjMFay9XPHwY+c5Z5M9M3eyJ8OfDAS1rGJjj+OKmTF0PwPeKfvwmmWyO1I5uVSkXz+TzWWqL9Bo1mExHh+frTIf3QCNVqVcMwpF6v860RcfPGLQCcczxeWxlaYgJQLpe13W4TxzEAR84jk36GiCDSf/w0JBHp19trCqDa14goXbqkCFDVASRc2hn4/JOANz8e0el0ePl6E8Vy2EwxfT0m+m4JJkKM8bm/OAusMxJgrSUIAh4uL9JzHV682qDZ8niwNI8hxcl0I3cgIuRyOZxzCbGR8feWABQKBanVavR6PdLpCYwxZLMZnCrv3n8i5V+gVCrJWABAsVgU3/f5urOHqhJF+wAct45YWX1y9h38TTJ1+RILM1kWZrLYLuztbp/r3/xz/QEaBZatLVh+fwAAAABJRU5ErkJggg==",
+  OnFire: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAJlJREFUOI2Vk7ENgDAMBJ+IMgUDMAUMwBLsg9iHJRgApmCAFPRQRTKOPyQu7dz/W3KAgtqG4WGzpgaezzN5nxWwnLWIq4GtMhP8wTJFksCCx+mmYnSFHCxNHBtomKWgCSxA9qLZ7woA0K8dnbVaUTrlwFg0gYaZWNEKVsVbcLoBAMfucS3hA1xLwLH7RCi5xJITlmbVp6w/0wsenDq/mhNLnwAAAABJRU5ErkJggg==",
+  Poison: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAI9JREFUOI1jZMABvDP1/yPzt06/yIhNHYYgukZ0gG4QCoeQZmyGwBnEakY3hBGXZr8aRRT+ppb7WA1hwmY6umZcYgwMDAyM6Lb71SjCbYNpQuajuwSrC0gBLNgE0Z2Ly/lYXYAtsPDJMWFLYTCF6DQ6wBkLpACiExJ6DKAkJGINQdeMYQAxhuDNTPgMwpWdARibR0zgyVhuAAAAAElFTkSuQmCC",
+}
+
 const playerString = ref("")
 const identity = ref(null)
 const sidepanel = ref('hsidepanel')
@@ -79,6 +95,8 @@ var roundcnt = 0
 var gameEnd = false
 var mainPage = null
 var autoScroll = false
+var inputString = ""
+var seed = ""
 //#region message receiver
 onMounted(() => {
   mainPage = document.getElementById('mainPanel')
@@ -129,6 +147,23 @@ var SHA = {
 }
 //#endregion
 //#region buff
+var BuffIconMananger = {
+  alreadyInit: function() {
+    let ret = new Array();
+    for (let i = 0; i < buffTypeCount; i++) {
+      ret.push(new Array(buffCount).fill(false))
+    }
+    return ret;
+  }(),
+  Init: function Init(_type, _id, _class, _url) {
+    if (this.alreadyInit[_type][_id]) {
+      return
+    }
+    this.alreadyInit[_type][_id] = true
+    CssStyle.AddBackground(_class, _url)
+  }
+}
+
 function GetBuffList(o) {
   let list = new Array()
   let l = new Array()
@@ -170,6 +205,11 @@ class Buff {
     this.owner = _owner
     this.isPermanent = _isPermanent
     this.buffId = _buffid
+    this.icon = `buff${_buffid}`
+    this.name = 'empty'
+  }
+  InitIcon(buffId, imageUrl) {
+    CssStyle.AddBackground(`buff${buffId}`, imageUrl);
   }
   Register() {}
   RegisterContent() {}
@@ -186,24 +226,33 @@ class Buff {
       }
     }
   }
+  UpdateOld(oldBuff) {}
   Impact() {}
 }
 class EnchantmentBuff extends Buff {
   constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined) {
     super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.Enchantment
+    this.icon = `eb${_buffid}`
+  }
+  InitIcon(buffId, imageUrl) {
+    BuffIconMananger.Init(this.type, this.buffId, `eb${buffId}`, imageUrl);
   }
   Destroy() {
-    this.owner.buffList[this.type][this.buffId] = new EnchantmentBuff(0, null, true)
+    this.owner.buffList[this.type][this.buffId] = new EnchantmentBuff(0, this.owner, true)
   }
 }
 class OnBeforeDamageBuff extends Buff {
   constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined) {
     super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.OnBeforeDamage
+    this.icon = `obdmgb${_buffid}`
+  }
+  InitIcon(buffId, imageUrl) {
+    BuffIconMananger.Init(this.type, this.buffId, `obdmgb${buffId}`, imageUrl);
   }
   Destroy() {
-    this.owner.buffList[this.type][this.buffId] = new OnBeforeDamageBuff(0, null, true)
+    this.owner.buffList[this.type][this.buffId] = new OnBeforeDamageBuff(0, this.owner, true)
   }
   Impact(dmg, target = null) { return dmg }
 }
@@ -211,9 +260,13 @@ class OnBeforeDefendBuff extends Buff {
   constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined) {
     super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.OnBeforeDefend
+    this.icon = `obdfdb${_buffid}`
+  }
+  InitIcon(buffId, imageUrl) {
+    BuffIconMananger.Init(this.type, this.buffId, `obdfdb${buffId}`, imageUrl);
   }
   Destroy() {
-    this.owner.buffList[this.type][this.buffId] = new OnBeforeDefendBuff(0, null, true)
+    this.owner.buffList[this.type][this.buffId] = new OnBeforeDefendBuff(0, this.owner, true)
   }
   Impact(dmg, Attacker = null) { return dmg }
 }
@@ -221,9 +274,13 @@ class OnDealDamageBuff extends Buff {
   constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined) {
     super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.OnDealDamage
+    this.icon = `oddmgb${_buffid}`
+  }
+  InitIcon(buffId, imageUrl) {
+    BuffIconMananger.Init(this.type, this.buffId, `oddmgb${buffId}`, imageUrl);
   }
   Destroy() {
-    this.owner.buffList[this.type][this.buffId] = new OnDealDamageBuff(0, null, true)
+    this.owner.buffList[this.type][this.buffId] = new OnDealDamageBuff(0, this.owner, true)
   }
   Impact(dmg, target = null) {}
 }
@@ -231,9 +288,13 @@ class OnDefendBuff extends Buff {
   constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined) {
     super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.OnDefend
+    this.icon = `odfdb${_buffid}`
+  }
+  InitIcon(buffId, imageUrl) {
+    BuffIconMananger.Init(this.type, this.buffId, `odfdb${buffId}`, imageUrl);
   }
   Destroy() {
-    this.owner.buffList[this.type][this.buffId] = new OnDefendBuff(0, null, true)
+    this.owner.buffList[this.type][this.buffId] = new OnDefendBuff(0, this.owner, true)
   }
   Impact(dmg, Attacker = null) {}
 }
@@ -241,10 +302,15 @@ class OnTimeBuff extends Buff {
   constructor(_lastTime, _owner, _isPermanent = false, _buffid = undefined, _impactFreq = null) {
     super(_lastTime, _owner, _isPermanent, _buffid)
     this.type = BuffType.OnTime
+    this.icon = `otb${_buffid}`
     this.impactFreq = _impactFreq
     this.currentTime = 0
   }
+  InitIcon(buffId, imageUrl) {
+    BuffIconMananger.Init(this.type, this.buffId, `otb${buffId}`, imageUrl);
+  }
   Destroy() {
+    // console.log(this.owner.name, this.name)
     this.owner.buffList[this.type][this.buffId] = new OnTimeBuff(0, this.owner, true)
   }
   Impact(deltaTime) { return deltaTime }
@@ -254,6 +320,7 @@ class Rapid extends OnTimeBuff {
     super(_lastTime, _owner, _isPermanent, BuffId.Rapid, _impactFreq)
     this.rate = _rate
     this.name = '敏捷'
+    this.InitIcon(BuffId.Rapid, BuffIconUrl.Rapid)
   }
   RegisterContent() {
     Renderer.Print(Transfer('[0] 获得[敏捷]效果，速度提升了', this.owner), 300, true)
@@ -263,16 +330,52 @@ class Rapid extends OnTimeBuff {
   }
   Impact(deltaTime) { return deltaTime * this.rate }
 }
+class KnightSpiritBuff extends EnchantmentBuff {
+  constructor(_lastTime, _owner, _rate, _isPermanent = false) {
+    super(_lastTime, _owner, _isPermanent, BuffId.KnightSpirit)
+    this.rate = _rate
+    this.name = '骑士精神'
+    this.InitIcon(BuffId.KnightSpirit, BuffIconUrl.KnightSpirit)
+  }
+  Register() {
+    this.owner.statDMult[Stat.atk] += this.rate
+    this.owner.statFPlus[Stat.def] += 20
+  }
+  Destroy() {
+    this.owner.statDMult[Stat.atk] -= this.rate
+    this.owner.statFPlus[Stat.def] -= 20
+    this.owner.buffList[this.type][this.buffId] = new EnchantmentBuff(0, this.owner, true)
+  }
+}
+class OnFire extends EnchantmentBuff {
+  constructor(_lastTime, _owner, _isPermanent = false) {
+    super(_lastTime, _owner, _isPermanent, BuffId.OnFire)
+    this.name = '燃烧'
+    this.counter = 0
+    this.InitIcon(BuffId.OnFire, BuffIconUrl.OnFire)
+  }
+  Register() {
+    this.counter++
+  }
+  UpdateOld(oldBuff) {
+    this.counter += oldBuff.counter
+  }
+  Destroy() {
+    this.counter = 0
+    this.owner.buffList[this.type][this.buffId] = new EnchantmentBuff(0, this.owner, true)
+  }
+}
 class Stun extends OnTimeBuff {
   constructor(_lastTime, _owner, _rate, _isPermanent = false, _impactFreq = null) {
     super(_lastTime, _owner, _isPermanent, BuffId.Stun, _impactFreq)
     this.name = '眩晕'
+    this.InitIcon(BuffId.Stun, BuffIconUrl.Stun)
   }
   RegisterContent() {
-    Renderer.Print(Transfer('[1] [眩晕]了', null, this.owner), 300, true)
+    Renderer.Print(Transfer('[1] 眩晕了！', null, this.owner), 300, true)
   }
   DestroyContent() {
-    Renderer.Print(Transfer('[0] 从[眩晕]中解除', this.owner), 300, true)
+    Renderer.Print(Transfer('[0] 从眩晕中解除', this.owner), 300, true)
   }
   Impact(deltaTime) { return 0 }
 }
@@ -280,12 +383,13 @@ class KnockUp extends OnTimeBuff {
   constructor(_lastTime, _owner, _rate, _isPermanent = false, _impactFreq = null) {
     super(_lastTime, _owner, _isPermanent, BuffId.KnockUp, _impactFreq)
     this.name = '击飞'
+    this.InitIcon(BuffId.KnockUp, BuffIconUrl.KnockUp)
   }
   RegisterContent() {
-    Renderer.Print(Transfer('[1] 被[击飞]了', null, this.owner), 300, true)
+    Renderer.Print(Transfer('[1] 被击飞了！', null, this.owner), 300, true)
   }
   DestroyContent() {
-    Renderer.Print(Transfer('[0] 从[击飞]中解除', this.owner), 300, true)
+    Renderer.Print(Transfer('[0] 从击飞中解除', this.owner), 300, true)
   }
   Impact(deltaTime) { return 0 }
 }
@@ -293,14 +397,45 @@ class Frozen extends OnTimeBuff {
   constructor(_lastTime, _owner, _rate, _isPermanent = false, _impactFreq = null) {
     super(_lastTime, _owner, _isPermanent, BuffId.Frozen, _impactFreq)
     this.name = '冻结'
+    this.InitIcon(BuffId.Frozen, BuffIconUrl.Frozen)
   }
   RegisterContent() {
-    Renderer.Print(Transfer('[1] 被[冻结]了', null, this.owner), 300, true)
+    Renderer.Print(Transfer('[1] 被冻结了！', null, this.owner), 300, true)
   }
   DestroyContent() {
-    Renderer.Print(Transfer('[0] 从[冻结]中解除', this.owner), 300, true)
+    Renderer.Print(Transfer('[0] 从冻结中解除', this.owner), 300, true)
   }
   Impact(deltaTime) { return 0 }
+}
+class Poison extends OnTimeBuff {
+  constructor(_lastTime, _owner, _dealer, _rate, _isPermanent = false, _impactFreq = null) {
+    super(_lastTime, _owner, _isPermanent, BuffId.Poison, _impactFreq)
+    this.name = '中毒'
+    this.rate = Math.floor(_rate)
+    this.dealer = _dealer
+    this.InitIcon(BuffId.Poison, BuffIconUrl.Poison)
+  }
+  RegisterContent() {
+    Renderer.Print(Transfer('[1] 中毒了！', null, this.owner), 300, true)
+  }
+  DestroyContent() {
+    Renderer.Print(Transfer('[0] 从中毒中解除', this.owner), 300, true)
+  }
+  Register() {
+    this.currentTime = 0
+  }
+  UpdateOld(oldBuff) {
+    this.rate += oldBuff.rate
+  }
+  Impact(deltaTime) {
+    this.currentTime += deltaTime
+    if(this.currentTime >= this.impactFreq) {
+      this.currentTime -= this.impactFreq
+      Renderer.Print(Transfer("[1] 毒性发作，", null, this.owner))
+      this.owner.DealDamage(this.dealer, [new MagicDamage(this.rate)], DamageType.Ranged, false)
+    }
+    return deltaTime 
+  }
 }
 //#endregion
 //#region skill
@@ -314,7 +449,7 @@ class Skill {
     this.level = 1.0 + plr.GetRand(100) / 100.0
   }
   SelectOneTarget() {
-    return this.owner.SelectOneEnermy()
+    return this.owner.SelectOneEnermyInFront()
   }
   ValidTarget(target) {
     return true
@@ -361,7 +496,7 @@ class ActionSkill extends Skill {
     this.level = plr.GetRand(100) + 1
     this.lvl = 0.75 + this.level / 400
     this.CD = this.lockCD ? this.CD : this.CD / this.lvl
-    this.currentCD = (this.lvl / 1.25 - 0.6) * this.CD
+    this.currentCD = (this.lvl / 1.25 - 0.4) * this.CD
   }
   InitActionSkl(_CD, _lockCD = false) {
     this.CD = _CD
@@ -457,6 +592,32 @@ class BasicSlash extends BasicAttack {
     Renderer.EndLine()
   }
 }
+class BasicSlashCrit extends BasicAttack {
+  constructor() {
+    super()
+    this.InitActionSkl(1000)
+    this.name = '挥剑劈砍(20%暴击率)'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let atp = stat[Stat.atk], target = targets[0]
+    if (o.GetRand(100) > 80) {
+      let dmg = target.CalcDamage([new PhysicalDamage(atp * 1.5)])
+      Renderer.Print(Transfer(`[0] 发动[会心一击]，`, o), 500)
+      target.DealDamage(o, dmg, SourceType.Melee)
+    } else {
+      let dmg = target.CalcDamage([new PhysicalDamage(atp)])
+      Renderer.Print(Transfer(`[0] 挥剑劈砍，`, o), 500)
+      target.DealDamage(o, dmg, SourceType.Melee)
+    }
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害，", null, null, [new PhysicalDamage('100%攻')]))
+    Renderer.Print(Transfer("有概率发动 [会心一击] 造成 [2] 点伤害，", null, null, [new PhysicalDamage('150%攻')]))
+    Renderer.EndLine()
+  }
+}
 class BasicMissle extends BasicAttack {
   constructor() {
     super()
@@ -476,6 +637,25 @@ class BasicMissle extends BasicAttack {
     Renderer.EndLine()
   }
 }
+class BasicArrow extends BasicAttack {
+  constructor() {
+    super()
+    this.InitActionSkl(1000)
+    this.name = '飞箭'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let atp = stat[Stat.atk], target = targets[0]
+    let dmg = target.CalcDamage([new PhysicalDamage(atp)])
+    Renderer.Print(Transfer(`[0] 射出一道箭矢，`, o), 500)
+    target.DealDamage(o, dmg, SourceType.Ranged)
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害", null, null, [new PhysicalDamage('100%攻')]))
+    Renderer.EndLine()
+  }
+}
 class MagicLaser extends ActionSkill {
   constructor() {
     super()
@@ -486,12 +666,105 @@ class MagicLaser extends ActionSkill {
     let o = this.owner, stat = o.GetStat()
     let atp = stat[Stat.mag], target = targets[0]
     Renderer.Print(Transfer(`[0] 发射[魔法激光]，`, o), 500)
-    let dmg = target.CalcDamage([new MagicDamage(atp * 0.6 + 100)])
-    target.DealDamage(o, dmg, SourceType.Ranged)
+    let dmg = target.CalcDamage([new MagicDamage(atp * 0.7 + 40)])
+    target.DealDamage(o, dmg, SourceType.Ranged, false)
   }
   Introduction() {
     this.Intro()
-    Renderer.Print(Transfer("效果：造成 [2] 点伤害", null, null, [new MagicDamage('60%魔+100')]))
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害", null, null, [new MagicDamage('70%魔+40')]))
+    Renderer.EndLine()
+  }
+}
+class DualArrow extends ActionSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(1500)
+    this.name = '二连射'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let atp = stat[Stat.atk], target = targets[0]
+    Renderer.Print(Transfer(`[0] 瞄准目标发动[二连射]，`, o), 500)
+    let dmg = target.CalcDamage([new PhysicalDamage(atp * 0.8)])
+    target.DealDamage(o, dmg, SourceType.Ranged, false)
+    dmg = target.CalcDamage([new PhysicalDamage(atp * 0.6)])
+    target.DealDamage(o, dmg, SourceType.Ranged, false)
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害，", null, null, [new PhysicalDamage('80%攻')]))
+    Renderer.Print(Transfer("再造成 [2] 点伤害", null, null, [new PhysicalDamage('60%攻')]))
+    Renderer.EndLine()
+  }
+}
+class PoisonousArrow extends ActionSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(400)
+    this.name = '涂毒箭矢'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let atp = stat[Stat.atk], mag = stat[Stat.mag], target = targets[0]
+    Renderer.Print(Transfer(`[0] 瞄准目标发射[涂毒箭矢]，`, o), 500)
+    let dmg = target.CalcDamage([new PhysicalDamage(atp * 0.5)])
+    target.DealDamage(o, dmg, SourceType.Ranged, false)
+    target.UpdateBuff(new Poison(1500, target, o, 25 + mag * 0.2, false, 500))
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害，并使目标中毒", null, null, [new PhysicalDamage('50%攻')]))
+    Renderer.Print(Transfer("（每0.5回合受到 [2] 点伤害", null, null, [new MagicDamage('25 + 20%魔')]))
+    Renderer.EndLine()
+  }
+}
+class FireBall extends ComboSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(2500)
+    this.name = '火球术'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let atp = stat[Stat.mag], target = targets[0]
+    Renderer.Print(Transfer(`[0] 吟唱[火球]术，`, o), 500)
+  }
+  Act(targets) {
+    if (this.stage == 0) {
+      let o = this.owner
+      this.targets = targets
+      Renderer.Print(Transfer(`[0] 开始吟唱[火球]术`, o), 500)
+      Renderer.EndLine()
+      this.owner.combo = this
+      this.stage++
+    } else if (this.stage == 1) {
+      let o = this.owner, stat = o.GetStat()
+      if (!this.targets[0].alive) {
+        Renderer.Print(Transfer(`[0] 丢失了目标！`, o), 500, true)
+        o.SP += 1000
+        this.owner.combo = null
+        this.stage = 0
+        return
+      }
+      let atp = stat[Stat.mag], target = this.targets[0]
+      let buf = target.buffList[BuffType.Enchantment][BuffId.OnFire].counter
+      buf = buf == undefined && buf == NaN ? 0 : buf
+      let dmg = target.CalcDamage([new MagicDamage(atp * 0.6 + 30 + buf * 20)])
+      Renderer.Print(Transfer(`[0] 发动[火球]术！`, o), 500)
+      Renderer.EndLine()
+      Renderer.Print(T(``))
+      target.DealDamage(o, dmg, SourceType.Ranged, false)
+      target.UpdateBuff(new OnFire(1000, target, true))
+      this.owner.combo = null
+      this.stage = 0
+    }
+  }
+  InterruptContent() {
+    Renderer.Print(Transfer(`[0] 的吟唱被打断了！`, this.owner), 500)
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害，并对对手附加一层火焰", null, null, [new MagicDamage('60%魔+30+20*火焰层数')]))
     Renderer.EndLine()
   }
 }
@@ -505,16 +778,25 @@ class Freeze extends ComboSkill {
     if (this.stage == 0) {
       let o = this.owner
       this.targets = targets
-      Renderer.Print(Transfer(`[0] 开始吟唱[冰封]术！`, o), 500)
+      Renderer.Print(Transfer(`[0] 开始吟唱[冰封]术`, o), 500)
       Renderer.EndLine()
       this.owner.combo = this
       this.stage++
     } else if (this.stage == 1) {
       let o = this.owner, stat = o.GetStat()
+      if (!this.targets[0].alive) {
+        Renderer.Print(Transfer(`[0] 丢失了目标！`, o), 500, true)
+        o.SP += 1000
+        this.owner.combo = null
+        this.stage = 0
+        return
+      }
       let atp = stat[Stat.mag], target = this.targets[0]
       Renderer.Print(Transfer(`[0] 发动[冰封]术！`, o), 500)
+      Renderer.EndLine()
       let dmg = target.CalcDamage([new MagicDamage(atp * 0.4)])
-      target.DealDamage(o, dmg, SourceType.Ranged)
+      Renderer.Print(T(``))
+      target.DealDamage(o, dmg, SourceType.Ranged, false)
       target.UpdateBuff(new Frozen(2500, target))
       this.owner.combo = null
       this.stage = 0
@@ -526,6 +808,48 @@ class Freeze extends ComboSkill {
   Introduction() {
     this.Intro()
     Renderer.Print(Transfer("效果：造成 [2] 点伤害，并使对手[冻结]2.5回合", null, null, [new MagicDamage('40%魔')]))
+    Renderer.EndLine()
+  }
+}
+class HeavyShot extends ComboSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(3000)
+    this.name = '重击'
+  }
+  Act(targets) {
+    if (this.stage == 0) {
+      let o = this.owner
+      this.targets = targets
+      Renderer.Print(Transfer(`[0] 瞄准 [1]`, o, targets[0]), 500)
+      Renderer.EndLine()
+      this.owner.combo = this
+      this.stage++
+    } else if (this.stage == 1) {
+      let o = this.owner, stat = o.GetStat()
+      if (!this.targets[0].alive) {
+        Renderer.Print(Transfer(`[0] 丢失了目标！`, o), 500, true)
+        o.SP += 1000
+        this.owner.combo = null
+        this.stage = 0
+        return
+      }
+      let atp = stat[Stat.atk], target = this.targets[0]
+      Renderer.Print(Transfer(`[0] 发动[强力射击]！`, o), 500)
+      Renderer.EndLine()
+      let dmg = target.CalcDamage([new PhysicalDamage(atp * 1.7)])
+      Renderer.Print(T(``))
+      target.DealDamage(o, dmg, SourceType.Ranged, false)
+      this.owner.combo = null
+      this.stage = 0
+    }
+  }
+  InterruptContent() {
+    Renderer.Print(Transfer(`[0] 的瞄准被打断了！`, this.owner), 500)
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害", null, null, [new PhysicalDamage('170%攻')]))
     Renderer.EndLine()
   }
 }
@@ -545,6 +869,43 @@ class RapidChant extends ActionSkill {
   Introduction() {
     this.Intro()
     Renderer.Print(T(`效果：接下来一回合内行动速度变为 [${Math.ceil((2.5 + (this.level - 1) / 200) * 100)}%]`))
+    Renderer.EndLine()
+  }
+}
+class RapidLoad extends ActionSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(4000, true)
+    this.name = '快速装填'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    Renderer.Print(Transfer(`[0] 发动[快速装填]，`, o), 500)
+    Renderer.EndLine()
+    let rate = 2.5 + (this.level - 1) / 200
+    o.UpdateBuff(new Rapid(2000, o, rate))
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(T(`效果：接下来一回合内行动速度变为 [${Math.ceil((2.5 + (this.level - 1) / 200) * 100)}%]`))
+    Renderer.EndLine()
+  }
+}
+class KnightSpirit extends ActionSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(4000)
+    this.name = '骑士精神'
+  }
+  Act(targets) {
+    let o = this.owner, rate = (0.50 * this.lvl)
+    o.UpdateBuff(new KnightSpiritBuff(2000, o, rate))
+    Renderer.Print(Transfer(`[0] 发动[骑士精神]，攻防属性得到强化`, o), 500)
+    Renderer.EndLine()
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：使自身的属性得到强化，攻提升 [2]，防提升[20]", null, null, [new PhysicalDamage(`${Math.floor((0.50 * this.lvl) * 100)}%`)]))
     Renderer.EndLine()
   }
 }
@@ -571,23 +932,75 @@ class StormSlash extends ActionSkill {
     Renderer.EndLine()
   }
 }
-class Knock extends ActionSkill {
+class Apprehend extends ActionSkill {
   constructor() {
     super()
-    this.InitActionSkl(4000)
-    this.name = '敲击'
+    this.InitActionSkl(6000)
+    this.name = '无情铁手'
+  }
+  SelectOneTarget() {
+    let t = this.owner.SelectOneEnermy()
+    return t
   }
   Act(targets) {
     let o = this.owner, stat = o.GetStat()
-    let atp = stat[Stat.atk], target = targets[0]
-    let dmg = 0.8 * target.CalcDamage([new PhysicalDamage(atp)])
-    Renderer.Print(Transfer(`[0] 挥剑[敲击]，`, o), 500)
-    target.DealDamage(o, dmg, SourceType.Melee)
-    target.UpdateBuff(new Stun(500, target))
+    let atp = 0.8 * stat[Stat.atk], target = targets[0]
+    let dmg = target.CalcDamage([new PhysicalDamage(atp)])
+    Renderer.Print(Transfer(`[0] 发动[无情铁手]，`, o), 500)
+    target.DealDamage(o, dmg, SourceType.Melee, false)
+    if (target.alive) {
+      target.group.Move(target, 0)
+    }
   }
   Introduction() {
     this.Intro()
-    Renderer.Print(Transfer("效果：造成 [2] 点伤害，并使对手[眩晕]0.5回合", null, null, [new PhysicalDamage('80%攻')]))
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害，并拉拽对手到最前排", null, null, [new PhysicalDamage('80%攻')]))
+    Renderer.EndLine()
+  }
+}
+class SwordSweep extends ActionSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(3000)
+    this.name = '横扫'
+  }
+  SelectTargets() {
+    let num = 3
+    let targets = new Array()
+    let count = 0, turns = 0
+    while (count <= num && turns <= num * 2) {
+      let newTarget = this.SelectOneTarget()
+      if (targets.indexOf(newTarget) == -1) {
+        if (this.ValidTarget(newTarget)) {
+          targets.push(newTarget)
+          count++;
+        }
+        turns++;
+        continue;
+      } else {
+        turns++;
+        continue;
+      }
+    }
+    return targets
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let atp = stat[Stat.atk] * (0.8 * this.lvl)
+    Renderer.Print(Transfer(`[0] 挥剑[横扫]，`, o), 500, true)
+    for (let target of targets) {
+      if (!target.alive) continue
+      let dmg = target.CalcDamage([new PhysicalDamage(atp)])
+      Renderer.Print(T(``))
+      target.DealDamage(o, dmg, SourceType.Melee, false)
+      if (o.GetRand(1000) > 850 && target.alive) {
+        target.UpdateBuff(new KnockUp(250, target))
+      }
+    }
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：对至多3名敌人造成 [2] 点的物理伤害，有[15%]概率击飞每一名敌人", null, null, [new PhysicalDamage(`${Math.floor((0.8 * this.lvl) * 100)}%攻`)]))
     Renderer.EndLine()
   }
 }
@@ -601,13 +1014,75 @@ class SlashUp extends ActionSkill {
     let o = this.owner, stat = o.GetStat()
     let atp = 0.8 * stat[Stat.atk], target = targets[0]
     let dmg = target.CalcDamage([new PhysicalDamage(atp)])
-    Renderer.Print(Transfer(`[0] 挥剑[上挑]，`, o), 500)
-    target.DealDamage(o, dmg, SourceType.Melee)
+    Renderer.Print(Transfer(`[0] 挥刀[上挑]，`, o), 500)
+    target.DealDamage(o, dmg, SourceType.Melee, false)
     target.UpdateBuff(new KnockUp(500, target))
   }
   Introduction() {
     this.Intro()
     Renderer.Print(Transfer("效果：造成 [2] 点伤害，并使对手被[击飞]0.5回合", null, null, [new PhysicalDamage('80%攻')]))
+    Renderer.EndLine()
+  }
+}
+class MomentarySlash extends ActionSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(3000)
+    this.name = '居合斩'
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let atp = 1.3 * stat[Stat.atk], target = targets[0]
+    let dmg = target.CalcDamage([new PhysicalDamage(atp)])
+    Renderer.Print(Transfer(`[0] 使用[拔刀斩]，`, o), 500)
+    target.DealDamage(o, dmg, SourceType.Melee, false)
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害，并使对手被[击飞]0.5回合", null, null, [new PhysicalDamage('130%攻')]))
+    Renderer.EndLine()
+  }
+}
+class Mangetsu extends ActionSkill {
+  constructor() {
+    super()
+    this.InitActionSkl(5000)
+    this.name = '月光斩'
+  }
+  SelectTargets() {
+    let num = 2
+    let targets = new Array()
+    let count = 0, turns = 0
+    while (count <= num && turns <= num * 2) {
+      let newTarget = this.SelectOneTarget()
+      if (targets.indexOf(newTarget) == -1) {
+        if (this.ValidTarget(newTarget)) {
+          targets.push(newTarget)
+          count++;
+        }
+        turns++;
+        continue;
+      } else {
+        turns++;
+        continue;
+      }
+    }
+    return targets
+  }
+  Act(targets) {
+    let o = this.owner, stat = o.GetStat()
+    let atp = stat[Stat.atk], mag = stat[Stat.mag], target = targets[0]
+    Renderer.Print(Transfer(`[0] 使用[月光斩]，`, o), 500, true)
+    for (let target of targets) {
+      if (!target.alive) continue
+      let dmg = target.CalcDamage([new PhysicalDamage(0.6 * atp), new MagicDamage(0.9 * mag)])
+      Renderer.Print(T(``))
+      target.DealDamage(o, dmg, SourceType.Melee, false)
+    }
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(Transfer("效果：对至多2名敌人造成 [2] 点的混合伤害", null, null, [new PhysicalDamage('60%攻'), new MagicDamage('90%魔')]))
     Renderer.EndLine()
   }
 }
@@ -645,6 +1120,7 @@ class Profession {
   constructor() {
     this.basicStats = [0, 0, 0, 0, 0, 0, 0]
     this.statsBoost = [[], [], [], [], [], [], []]
+    this.professionRow = 1
   }
   GetSkillList(owner) {}
   Intro() {
@@ -723,13 +1199,14 @@ class BasicProfession extends Profession {
     Renderer.EndLine()
   }
 }
-class Kight extends Profession {
+class Knight extends Profession {
   constructor() {
     super()
-    this.basicStats = [380, 40, 10, 20, 0, 60, 30]
-    this.statsBoost = [[60, 60], [30, 30], [5, 5], [10], [10], [30], [10]]
+    this.basicStats = [380, 40, 15, 20, 10, 40, 15]
+    this.statsBoost = [[60, 60], [30], [5, 5], [10], [10], [10], [10]]
+    this.professionRow = 1
     this.name = '骑士'
-    this.icon = 'kight'
+    this.icon = 'knight'
   }
   GetSkillList() {
     let list = new Array()
@@ -738,15 +1215,44 @@ class Kight extends Profession {
     let tier2 = new Array()
     let tier3 = new Array()
     tier0.push(new BasicSlash())
-    tier2.push(new Knock())
-    tier2.push(new SlashUp())
+    tier1.push(new SwordSweep())
+    tier2.push(new KnightSpirit())
+    tier2.push(new Apprehend())
+    list = [tier0, tier1, tier2, tier3]
+    return list
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(T(`介绍：重装战士，宣誓为你效忠`))
+    Renderer.EndLine()
+  }
+}
+class Samurai extends Profession {
+  constructor() {
+    super()
+    this.basicStats = [300, 50, 15, 30, 0, 60, 30]
+    this.statsBoost = [[60], [20], [10], [10], [10], [30], [20]]
+    this.professionRow = 1
+    this.name = '武士'
+    this.icon = 'samurai'
+  }
+  GetSkillList() {
+    let list = new Array()
+    let tier0 = new Array()
+    let tier1 = new Array()
+    let tier2 = new Array()
+    let tier3 = new Array()
+    tier0.push(new BasicSlashCrit())
+    tier1.push(new MomentarySlash())
+    tier1.push(new SlashUp())
+    tier2.push(new Mangetsu())
     tier3.push(new StormSlash())
     list = [tier0, tier1, tier2, tier3]
     return list
   }
   Introduction() {
     this.Intro()
-    Renderer.Print(T(`介绍：忠诚的战士`))
+    Renderer.Print(T(`介绍：善战的武士，刀尖隐隐有鲜血的印痕`))
     Renderer.EndLine()
   }
 }
@@ -755,6 +1261,7 @@ class Wizard extends Profession {
     super()
     this.basicStats = [260, 10, 10, 60, 10, 40, 20]
     this.statsBoost = [[60], [20], [5], [30], [20], [20], [20]]
+    this.professionRow = 2
     this.name = '巫师'
     this.icon = 'wizard'
   }
@@ -767,21 +1274,53 @@ class Wizard extends Profession {
     tier0.push(new BasicMissle())
     tier1.push(new RapidChant())
     tier1.push(new MagicLaser())
+    tier1.push(new FireBall())
     tier2.push(new Freeze())
     list = [tier0, tier1, tier2, tier3]
     return list
   }
   Introduction() {
     this.Intro()
-    Renderer.Print(T(`介绍：神秘的巫师`))
+    Renderer.Print(T(`介绍：神秘的巫师，你不知道她的过去`))
+    Renderer.EndLine()
+  }
+}
+class Archer extends Profession {
+  constructor() {
+    super()
+    this.basicStats = [260, 60, 10, 30, 10, 80, 40]
+    this.statsBoost = [[60], [20, 10], [5], [10], [20], [10], [20]]
+    this.professionRow = 2
+    this.name = '弓箭手'
+    this.icon = 'archer'
+  }
+  GetSkillList() {
+    let list = new Array()
+    let tier0 = new Array()
+    let tier1 = new Array()
+    let tier2 = new Array()
+    let tier3 = new Array()
+    tier0.push(new BasicArrow())
+    tier1.push(new DualArrow())
+    tier1.push(new RapidLoad())
+    tier2.push(new HeavyShot())
+    tier2.push(new PoisonousArrow())
+    list = [tier0, tier1, tier2, tier3]
+    return list
+  }
+  Introduction() {
+    this.Intro()
+    Renderer.Print(T(`介绍：敏捷的弓箭手，擅长用利箭刺穿目标`))
     Renderer.EndLine()
   }
 }
 function GetProfessionList() {
   var list = new Array()
   // list.push(new BasicProfession())
-  list.push(new Kight())
+  list.push(new Knight())
   list.push(new Wizard())
+  list.push(new Archer())
+  list.push(new Samurai())
   return list
 }
 //#endregion
@@ -790,14 +1329,20 @@ class Group {
   constructor(_id, _team) {
     this.id = _id
     this.team = _team
-    this.members = new Array()
+    // priority, front, back, invicible
+    this.memberList = new Array()
+    this.members = [new Array(), new Array(), new Array(), new Array()]
     this.membersDead = new Array()
     this.die = true
     this.clanName = ''
     this.clanIcon = ''
   }
   Update() {
-    if (this.members.length != 0) {
+    let alive = false
+    for (let r of this.members) {
+      alive ||= (r.length != 0)
+    }
+    if (alive) {
       if (this.die == true) {
         if (aliveGroups.indexOf(this) == -1) {
           aliveGroups.push(this)
@@ -814,7 +1359,7 @@ class Group {
       }
     }
   }
-  Add(plr) {
+  AddToList(plr) {
     // console.log(`adding ${plr.name}`)
     if (plr.type == CounterType.Counter) {
       this.counter = plr
@@ -824,20 +1369,31 @@ class Group {
         this.clanName = plr.name
         this.clanIcon = IconCanvas.GetIcon(this.clanName)
       }
-      let pos = players.indexOf(this.counter) + this.members.length + 1
+      let pos = players.indexOf(this.counter) + this.memberList.length + 1
       players.splice(pos, 0, plr)
-      this.members.push(plr)
+      this.memberList.push(plr)
       rawPlayers.push(plr)
     }
+  }
+  Add(plr, row) {
+    this.members[row].push(plr)
     this.Update()
   }
   Die(plr) {
-    let pos = this.members.indexOf(plr)
-    this.members.splice(pos, 1)
+    let row = plr.row
+    let pos = this.members[row].indexOf(plr)
+    this.members[row].splice(pos, 1)
     pos = players.indexOf(plr)
     players.splice(pos, 1)
     this.membersDead.push(plr)
     this.Update()
+  }
+  Move(plr, newRow) {
+    let oldRow = plr.row
+    plr.row = newRow
+    let pos = this.members[oldRow].indexOf(plr)
+    this.members[oldRow].splice(pos, 1)
+    this.Add(plr, newRow)
   }
 }
 //#endregion
@@ -880,6 +1436,8 @@ class Plr {
     let professionList = GetProfessionList();
     this.profession = professionList[this.GetRand(professionList.length)];
     this.icon = this.profession.icon
+    this.row = this.profession.professionRow
+    this.group.Add(this, this.row)
   }
   InitStat() {
     let p = this.profession;
@@ -897,7 +1455,6 @@ class Plr {
     let p = this.profession;
     let list = p.GetSkillList();
     let last = new Array()
-    // need improve
     for (let tier in list) {
       if (tier == 0) {
         for (let skl of list[tier]) {
@@ -938,6 +1495,23 @@ class Plr {
     this.alive = false;
     this.group.Die(this);
   }
+  SelectOneEnermyInFront() {
+    let g = this.group;
+    let pos = this.GetRand(aliveGroups.length - 1);
+    if (pos >= aliveGroups.indexOf(g)) {
+      pos++;
+    }
+    let targetGroup = aliveGroups[pos];
+    let row = 0;
+    for (let i in targetGroup.members) {
+      if (targetGroup.members[i].length > 0) {
+        row = i
+        break
+      }
+    }
+    pos = this.GetRand(targetGroup.members[row].length);
+    return targetGroup.members[row][pos];
+  }
   SelectOneEnermy() {
     let g = this.group;
     let pos = this.GetRand(aliveGroups.length - 1);
@@ -945,16 +1519,20 @@ class Plr {
       pos++;
     }
     let targetGroup = aliveGroups[pos];
-    pos = this.GetRand(targetGroup.members.length);
-    return targetGroup.members[pos];
+    let targets = [];
+    for (let i in targetGroup.members) {
+      targets = targets.concat(targetGroup.members[i])
+    }
+    pos = this.GetRand(targets.length);
+    return targets[pos];
   }
   CalcDamage(damage) {
     for (let i in damage) {
       if (damage[i].type == DamageType.Physical) {
-        damage[i].atp = Math.max(Math.ceil(damage[i].atp - this.stat[Stat.def]), 1)
+        damage[i].atp = Math.max(Math.ceil(damage[i].atp - this.GetStat()[Stat.def]), 1)
       }
       if (damage[i].type == DamageType.Magic) {
-        damage[i].atp = Math.max(Math.ceil(damage[i].atp - this.stat[Stat.res]), 1)
+        damage[i].atp = Math.max(Math.ceil(damage[i].atp - this.GetStat()[Stat.res]), 1)
       }
       if (damage[i].type == DamageType.True) {
         damage[i].atp = Math.max(Math.ceil(damage[i].atp), 1)
@@ -962,7 +1540,7 @@ class Plr {
     }
     return damage
   }
-  DealDamage(source, damage, srcType) {
+  DealDamage(source, damage, srcType, canBeDodge = true) {
     if (!this.alive)
       return;
     let dex = this.GetStat()[Stat.dex];
@@ -985,12 +1563,9 @@ class Plr {
       atp += d.atp
     }
     if (atp > 0) {
-      if (this.combo) {
-        this.combo.Interrupt()
-      }
-      if (srcType == SourceType.Ranged && dex * dex > this.GetRand(36000)) {
+      if (canBeDodge && srcType == SourceType.Ranged && dex * dex > this.GetRand(36000)) {
         Renderer.Print(Transfer(`[1] [闪避]了此攻击`, null, this, [], this.health, this.health), 300, false, []);
-      } else if (srcType == SourceType.Melee && dex * dex > this.GetRand(3000) && str * str > this.GetRand(20000)) {
+      } else if (canBeDodge && srcType == SourceType.Melee && dex * dex > this.GetRand(3000) && str * str > this.GetRand(20000)) {
         Renderer.Print(Transfer(`[1] [招架]了此攻击`, null, this, [], this.health, this.health), 300, false, []);
       } else {
         let oldhp = this.health;
@@ -998,14 +1573,18 @@ class Plr {
         let hp = this.health;
         Renderer.Print(Transfer(`[1] 受到[2]点伤害`, null, this, dmg, oldhp, this.health), 300, false, [new RenderRequest(this, hp)]);
         if (this.health == 0) {
+          this.Die();
           Renderer.EndLine();
           Renderer.Print(T(''))
-          Renderer.Print(Transfer(`[0]死亡`, this), 500);
-          this.Die();
+          Renderer.Print(Transfer(`[0]死亡`, this, null, [], 0, 0, "death"), 500);
         }
         for (let d of dmg) {
           source.damageDealt[d.type] += d.atp
         }
+      }
+      if (this.combo) {
+        Renderer.Print("，")
+        this.combo.Interrupt()
       }
       Renderer.EndLine()
     }
@@ -1023,32 +1602,34 @@ class Plr {
         buff.Update(dTime)
       }
     }
-    this.SP += deltaTime;
-    for (let skl of this.actionSkillList) {
-      skl.CoolDown(deltaTime);
-    }
-    // console.log(deltaTime)
-    if (this.SP >= 1000) {
-      if (this.combo != null) {
-        let skl = this.combo;
-        let targets = skl.SelectTargets();
-        skl.Use(targets);
-      } else {
-        for (let skl of this.actionSkillList) {
-          if (skl.isReady) {
-            skls.push(skl);
-          }
-        }
-        // console.log(this, skls)
-        if (skls.length > 0) {
-          let skl = skls[this.GetRand(skls.length)];
-          // console.log(skls, skl)
+    if (this.alive) {
+      this.SP += deltaTime;
+      for (let skl of this.actionSkillList) {
+        skl.CoolDown(deltaTime);
+      }
+      // console.log(deltaTime)
+      if (this.SP >= 1000) {
+        if (this.combo != null) {
+          let skl = this.combo;
           let targets = skl.SelectTargets();
           skl.Use(targets);
-          // skl.Act(targets)
+        } else {
+          for (let skl of this.actionSkillList) {
+            if (skl.isReady) {
+              skls.push(skl);
+            }
+          }
+          // console.log(this, skls)
+          if (skls.length > 0) {
+            let skl = skls[this.GetRand(skls.length)];
+            // console.log(skls, skl)
+            let targets = skl.SelectTargets();
+            skl.Use(targets);
+            // skl.Act(targets)
+          }
         }
+        this.SP -= 1000;
       }
-      this.SP -= 1000;
     }
   }
   AddBuff(buff) {
@@ -1061,6 +1642,7 @@ class Plr {
     if (this.buffList[buff.type][buff.buffId].name != buff.name) {
       this.AddBuff(buff)
     } else {
+      buff.UpdateOld(this.buffList[buff.type][buff.buffId])
       this.buffList[buff.type][buff.buffId].Destroy()
       this.buffList[buff.type][buff.buffId] = buff
       buff.Register()
@@ -1075,7 +1657,6 @@ class Plr {
 //#region fight
 //#region init
 function Reset() {
-  Renderer.Reset()
   gameEnd = false
   teams = new Array()
   rawPlayers = new Array()
@@ -1084,13 +1665,24 @@ function Reset() {
   aliveGroups = new Array()
   roundcnt = 0
   autoScroll = false
+  seed = ""
 }
 function InitPlayers() {
   GetTeams()
   InitProfessions()
+  let seq = SHA.Get(seed)
+  for (let team of teams) {
+    for (let plr of team) {
+      for (let i in plr.attr) {
+        plr.attr[i] = SHA.GetNext(plr.attr[i], SHA.GetRandom(seq, seq[i] % 65536) % 65536)
+      }
+    }
+  }
+  // Log
+  // console.log(`seed:"${seed}"`)
 }
 function GetTeams() {
-  let plrs = playerString.value.split('\n')
+  let plrs = inputString.split('\n')
   let curTeam = new Array()
   let teamId = 1
   let teamCount = 0
@@ -1105,6 +1697,17 @@ function GetTeams() {
   if (plrs[0] == SpecialName.Test) {
     plrs.splice(0, 1)
     gameMode.value = GameMode.Test
+  }
+  if (plrs[0] == SpecialName.WinRate) {
+    plrs.splice(0, 1)
+    gameMode.value = GameMode.WinRate
+  }
+  for (let i in plrs) {
+    if (plrs[i].startsWith(SpecialName.SetSeed)) {
+      seed = plrs[i].slice(SpecialName.SetSeed.length, plrs[i].length)
+      plrs.splice(i, 1)
+      break
+    }
   }
   for (let i in plrs) {
     if (plrs[i] != '') {
@@ -1122,12 +1725,12 @@ function GetTeams() {
       if (plrs[i] != '') {
         let newGroup = new Group(teamId, curTeam)
         groups.push(newGroup)
-        newGroup.Add(new Plr(`Team ${teamId}`, curTeam, newGroup, CounterType.Counter))
+        newGroup.AddToList(new Plr(`Team ${teamId}`, curTeam, newGroup, CounterType.Counter))
         let newPlr = new Plr(plrs[i], curTeam, newGroup, CounterType.Player)
         curTeam.push(newPlr)
         teams.push(curTeam)
         teamId++
-        newGroup.Add(newPlr)
+        newGroup.AddToList(newPlr)
         curTeam = new Array()
       }
     }
@@ -1136,18 +1739,18 @@ function GetTeams() {
     teamId = 1
     let newGroup = new Group(teamId, curTeam)
     groups.push(newGroup)
-    newGroup.Add(new Plr(`Team ${teamId}`, curTeam, newGroup, CounterType.Counter))
+    newGroup.AddToList(new Plr(`Team ${teamId}`, curTeam, newGroup, CounterType.Counter))
     for (let i in plrs) {
       if (plrs[i] != '') {
         let newPlr = new Plr(plrs[i], curTeam, newGroup, CounterType.Player)
         curTeam.push(newPlr)
-        newGroup.Add(newPlr)
+        newGroup.AddToList(newPlr)
       } else {
         if (curTeam.length != 0) {
           teams.push(curTeam)
           teamId++
           groups.push(newGroup)
-          newGroup.Add(new Plr(`Team ${teamId}`, curTeam, newGroup, CounterType.Counter))
+          newGroup.AddToList(new Plr(`Team ${teamId}`, curTeam, newGroup, CounterType.Counter))
         }
         curTeam = new Array()
         newGroup = new Group(teamId, curTeam)
@@ -1185,6 +1788,8 @@ function ShowBasicStats() {
       // console.log(plr.name, plr.GetStat())
     }
   }
+  Renderer.Print(T(` `))
+  Renderer.Print(`seed:"${seed}"`, 0, true)
   Renderer.EmptyLine()
 }
 //#endregion
@@ -1200,18 +1805,23 @@ function NextRound() {
   // for (let plr of players) {
   //   console.log(plr.name, plr.alive)
   // }
+  // for (let grp of aliveGroups) {
+  //   console.log(grp)
+  // }
   for (let plr of players) {
     if (plr.alive && !gameEnd) {
       plr.Act()
       RoundEnd()
     }
   }
-  // if (roundcnt > 15) gameEnd = true
+  if (roundcnt > 200) gameEnd = true
 }
 function RoundEnd() {
   if (aliveGroups.length <= 1) {
-    console.log(`Game End!`)
-    console.log(`The team left is`, aliveGroups)
+    // Log
+    // console.log(`Game End!`)
+    // console.log(`The team left is`, aliveGroups)
+
     // console.log(groups)
     gameEnd = true;
   }
@@ -1273,8 +1883,11 @@ function Test() {
   }
 }
 function Run() {
+  inputString = playerString.value
   Reset()
+  Renderer.Reset()
   InitPlayers()
+  Renderer.SetActive(true)
   ShowBasicStats()
   Renderer.Run(identity.value)
   if (gameMode.value == GameMode.Normal) {
@@ -1286,7 +1899,48 @@ function Run() {
   } else if (gameMode.value == GameMode.Test) {
     Test()
     Renderer.Close()
+  } else if (gameMode.value == GameMode.WinRate) {
+    Renderer.SetActive(false)
+    let groupWinCount = []
+    let groups = []
+    for (let grp of aliveGroups) {
+      groupWinCount.push(0)
+      groups.push(grp.clanName)
+    }
+    GetWinRate(groupWinCount, groups, 10)
   }
+}
+function GetWinRate(groupWinCount, groups, cur) {
+  if (cur == 10000) {
+    Renderer.Print(S(`评测结束`), 0, true)
+    return
+  }
+  for (let i in groups) {
+    groupWinCount[i] = 0
+  }
+  for (let currentSeed = 1; currentSeed <= cur; currentSeed++) {
+    inputString = playerString.value + "\n" + `seed:${currentSeed}`
+    Reset()
+    InitPlayers()
+    while (!gameEnd) {
+      NextRound()
+    }
+    groupWinCount[groups.indexOf(aliveGroups[0].clanName)]++
+  }
+  PrintWinRate(groups, groupWinCount, cur)
+  Renderer.Run(identity.value)
+  setTimeout(() => {
+    GetWinRate(groupWinCount, groups, cur * 10)
+  }, 2000)
+}
+function PrintWinRate(groups, groupWinCount, currentCount) {
+  Renderer.SetActive(true)
+  Renderer.Print(S(`评测精度${100/currentCount}%:`), 0, true)
+  for (let i in groups) {
+    Renderer.Print(S(` `) + S(`小队"${groups[i]}"的胜率为`) + T(`[${groupWinCount[i] * 100 / currentCount}%]`), 0, true)
+  }
+  Renderer.Print(S(`<br>`), 0, true)
+  Renderer.SetActive(false)
 }
 //#endregion
 //#region output stream
@@ -1298,6 +1952,7 @@ var Renderer = {
   wait: 1,
   delay: 100,
   renderHealthStream: new Array(),
+  active: false,
   Reset: function() {
     this.historyLines = ""
     this.latestLine = ""
@@ -1306,8 +1961,9 @@ var Renderer = {
     this.wait = 1
     this.delay = 100
     this.close = false
+    this.active = true
   },
-  UpdateContent: function(id, content) {
+  UpdateContent: async function(id, content) {
     if (id != identity.value) return
     if (content.cmd == 'close') {
       this.close = true
@@ -1316,8 +1972,22 @@ var Renderer = {
     this.latestLine += content.str
     output.value = this.historyLines + Render.Row(this.latestLine)
   },
+  Clear: function() {
+    this.output = []
+  },
   Run: async function(id) {
-    if (id != identity.value || this.close) return
+    if (id != identity.value || this.close) {
+      while (this.outputStream.length != 0 && this.close) {
+        let content = this.outputStream.shift()
+        // console.log("del", content.cmd, content.str)
+        if (content.cmd == "start") {
+          this.close = false
+          Run(id)
+          break
+        }
+      }
+      return
+    }
     let scrollPos = mainPage.scrollTop + mainPage.clientHeight
     if (mainPage.scrollHeight - scrollPos < 100) {
       mainPage.scrollTop = mainPage.scrollHeight
@@ -1329,8 +1999,8 @@ var Renderer = {
       setTimeout(() => {
         this.Run(id)
       }, this.delay)
-    }
-    else {
+    } else {
+      // console.log(next.cmd, next.str)
       if (next.delay != 0 || this.wait == 0) {
         setTimeout(() => {
           this.UpdateContent(id, next)
@@ -1346,8 +2016,9 @@ var Renderer = {
       }
     }
   },
-  Print: function(_content, _delayTime = 0, end = false, healthUpdates = []) {
-    this.outputStream.push({str: _content, delay: _delayTime, end:end, cmd:'print'})
+  Print: function(_content, _delayTime = 0, end = false, healthUpdates = [], _class = "") {
+    if (!this.active) return
+    this.outputStream.push({str: _content, delay: _delayTime, end:end, class:_class, cmd:'print'})
     this.renderHealthStream.push(healthUpdates)
   },
   EndLine: function() {
@@ -1356,7 +2027,7 @@ var Renderer = {
   EmptyLine: function() {
     this.Print(`<br>`, 0, true)
   },
-  End: function(end) {
+  End: async function(end) {
     if (end) {
       this.historyLines += Render.Row(this.latestLine)
       this.latestLine = ''
@@ -1365,7 +2036,7 @@ var Renderer = {
   FastMode: function() {
     this.wait = 0
   },
-  UpdateRenderHealth: function(healthChange) {
+  UpdateRenderHealth: async function(healthChange) {
     if (healthChange instanceof Array) {
       for (let req of healthChange) {
         req.plr.UpdateRenderHealth(req.hp)
@@ -1374,7 +2045,13 @@ var Renderer = {
   },
   Close: function() {
     this.outputStream.push({str: '', delay: 0, end:false, cmd:'close'})
-  }
+  },
+  Start: function() {
+    this.outputStream.push({str: '', delay: 0, end:false, cmd:'start'})
+  },
+  SetActive: function(state) {
+    this.active = state
+  },
 }
 class RenderRequest {
   constructor(_plr, _hp) {
@@ -1429,9 +2106,9 @@ var Render = {
     }
     return str
   },
-  Name: function(name) {
+  Name: function(name, _class = "") {
     let str = ''
-    str += `<span class="name">${name}</span>`
+    str += `<span class="name ${_class}">${name}</span>`
     return str
   },
   Icon: function(_class = '') {
@@ -1439,12 +2116,24 @@ var Render = {
     str += `<span class="icon ${_class}"></span>`
     return str
   },
+  PlayerBuff: function(buffList) {
+    let str = ''
+    for (let list of buffList) {
+      for (let buff of list) {
+        if (buff.name != 'empty') {
+          str += this.Icon(buff.icon);
+        }
+      }
+    }
+    return str;
+  },
   Player: function(plr, oldhp = 0, newhp = 0) {
     let str = ''
     str += this.Icon(plr.group.clanIcon)
     str += this.Icon(plr.icon)
     str += this.HealthBar(plr, oldhp, newhp)
-    str += this.Name(plr.name)
+    str += plr.alive ? this.Name(plr.name) : this.Name(plr.name, "death")
+    str += this.PlayerBuff(plr.buffList)
     return this.Span(str)
   },
   PlayerForRender: function(plr, oldhp = 0, newhp = 0) {
@@ -1500,7 +2189,7 @@ var Render = {
     return `<span class="u title2 ${_class}">${str}</span>`
   }
 }
-function Transfer(_str, caster = null, target = null, dmg = [], oldhp = 0, newhp = 0) {
+function Transfer(_str, caster = null, target = null, dmg = [], oldhp = 0, newhp = 0, _class = "") {
   let s = '', str = _str
   let reg = str.match(/\[.*?\]/g)
   for (let i in reg) {
@@ -1521,11 +2210,14 @@ function Transfer(_str, caster = null, target = null, dmg = [], oldhp = 0, newhp
       str = str.replace(reg[i], Render.SText(reg[i].slice(1, reg[i].length - 1)))
     }
   }
-  s += `<span class="sentence">${str}</span>`
+  s += `<span class="sentence ${_class}">${str}</span>`
   return s
 }
 function T(str) {
   return Transfer(str)
+}
+function S(str) {
+  return `<span class="sentence">${str}</span>`
 }
 window.onresize = () => {
   if (document.documentElement.clientWidth >= 500) {
@@ -1651,7 +2343,7 @@ var IconCanvas = {
       }
     }
   },
-  drawShape: function drawShape(c, shapeData, color) {
+  DrawShape: function DrawShape(c, shapeData, color) {
     let shapeCanvas = document.createElement('canvas')
     shapeCanvas.width = 16
     shapeCanvas.height = 16
@@ -1675,8 +2367,8 @@ var IconCanvas = {
     ctx.putImageData(shapeImage, 0, 0);
     c.drawImage(shapeCanvas, 0, 0);
   },
-  drawBorder: function drawBorder(c, b) {
-    this.drawShape(c, this.borders[b], [64, 64, 64]);
+  DrawBorder: function DrawBorder(c, b) {
+    this.DrawShape(c, this.borders[b], [64, 64, 64]);
     var img = c.getImageData(0, 0, 16, 16);
     let mask = this.masks[b];
     for (let i = 0; i < 256; ++i) {
@@ -1750,19 +2442,20 @@ var IconCanvas = {
         c = colors[pos++] % this.cCount;
       }
       usedColors.push(c);
-      this.drawShape(ctx, datas[shapeSorted[i]], this.sig_colors[c]);
+      this.DrawShape(ctx, datas[shapeSorted[i]], this.sig_colors[c]);
     }
-    this.drawBorder(ctx, borderStyle);
-    this.loadCssCode(`.sig${++this.sigCount}{background-image: url("${canvas.toDataURL()}")}`);
+    this.DrawBorder(ctx, borderStyle);
+    CssStyle.AddBackground(`sig${++this.sigCount}`, canvas.toDataURL());
     
     return `sig${this.sigCount}`;
   },
-  loadCssCode: function loadCssCode(code){
+}
+var CssStyle = {
+  LoadCode: function LoadCode(code) {
     let style = document.createElement('style');
     let head = document.head || document.getElementsByTagName('head')[0]
     style.type = 'text/css';
     if (style.styleSheet) {
-      console.log(1)
       style.styleSheet.cssText = code
     } else {
       let textNode = document.createTextNode(code)
@@ -1770,6 +2463,10 @@ var IconCanvas = {
     }
     head.appendChild(style);
   },
+  AddBackground: function AddBackground(_className, _imageUrl) {
+    // console.log(`adding new icon class: ${_className}, url: ${_imageUrl}`)
+    this.LoadCode(`.${_className}{background-image: url("${_imageUrl}")}`);
+  }
 }
 IconCanvas.Init()
 //#endregion
@@ -1916,8 +2613,14 @@ span {
 .wizard {
   background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAABT0lEQVQ4jZ2TMUrEUBCGv8lmlZDEgMKaM1gIgthuUthl9wgWFop3sBSLPYEHsBRsAh7ACygGwUIEt1eIiG7QjMWakCy7MTjw4DGP+ef//5knqkrbEBEFUFUpcuZ/CkVEi7vRthgou6qqFPlGgHnFM+/tJMz69AvcLEFENIqiRYDtTBSZy7zGai4DEdHBYNCEXcZCCaqKqhIEQdXMvwFERG+u9smNTisGoqq1DvH2HY8ft2y6IS+dN57Sa+zM5+hhUDOvZCAiGgQBw+EQgOetY9w1h+7eLvH3COtrlU/znbONC0REi1MAmACu65LnOQAJ6xwcnnB6ucPHyivnMmJp2aBrdOEe+v0+IlKuswAahiG2bdPr9UiSBN/3ybIM0zRJ05TJZIJlWQA4jjOVGsfTla56EEVROV/P8/A8j/F4XNMcxzFQ+VjVNW0aVxGzRv4As9aJ98QfgFgAAAAASUVORK5CYII=');
 }
-.kight {
+.samurai {
   background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAABw0lEQVQ4jZXTT0gUURzA8e8bZ9pdszIPYhuVZIctT0JeMyG8pHso0g5hhw4FFgYFXcRLatFBUlgsCMwOeuhgh+gWUQgdCm/pIWu71app+6eZ2dl5+/Ngf6R2a/Z7e/Deh/d+8JTtfpfP6zl+pA421FNJxuDwta1rqeg0YORyNg8nb6MdGwxIplYqQoyJ0SmltebRzBiFbAZT51haXg6MGADDA2MKYPrxBK5TwNJ5PgZElMjvfYMj/aKU4sLZS0iVhY/QtP+QCgwA3BrolYIV4kxnFyLC9updHDhyvCzyFwBw53qXuDvqOX2yE9E+5rYQsZZ4SaQkAHC375j4ZoQT3b34+Qw1u/cCqFhLHIDFvrAk08XNIZbqauKV0m6G59P3kKKHZ2fx7KwADMVrJZkuApQHAG7cf60cx2FuZop8JoXz8i2z56KCNqmpizH+xij/hK0NXWyTfQsr7Hm/RtWpAl8di+7JL+qfM/izJz1RqU1lWair5umnNM/mXfXfJ/xs9nxUJAwNzQ6H2/M0H23lwUiPBAIWL5sS0qu8W/WIJXzVfuWbClsmH5IpOhojYga5wfz6TuaWfn15biZeqI7GiHgYbABWOsDpxyBAewAAAABJRU5ErkJggg==');
+}
+.archer {
+  background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAACEElEQVQ4jaWTz0vTcRjHX5/Pvs1NEPwRK1QaZlGnDnroGC2n03Dh1MC53bL6DwoWmh77B6ppbsqyQyzI2dcfdesSSNilCKkMsRloJm5N29r302FuHkwTfOC5PB9eb97vz8MjlFIcpjQAZWQLg18rn1iNxzlaW8e7l88539pVFF/4nNlYWTIrIaRJM4tT5+p/I6SlyGJJavuIH0/MRZZfzUV2PSzGoP7mwzO26pp5uQd8+vW9zjjAicu3ZNPAlAREQ++Eecl+lYt3Yta3D27MA6CUwsj+ybdIfP9YpQecSg84VSqZLNEDTvSAk0w6fSQYHFSbqS1rMDiIHnCilEIopViLLwCQ+Dpb9UEfWtp2IfJ2GvomtXA4lPF1+4ojjyObAFeaL2GrrqEQobyyhn/Cd3Owt8tbkof9fn8hqwQoPWbn22ysDKDu+v2zBbhfN4VDoXRnR0fp2JOxJIDftwMDuQhG1pDTfa78LgVAQ++EKTwymm73tFdEn0XXAXzdPoQQIGBjNb4TQZqkAXDhdrQ0l/mFDI+MZjxtHlse9nZ5sRZbsFiLdjt4PzEoFt88NQDh6p8SQ8PDRqvbXRkbH18G6Om5tse2t/8gKy0AuAZycHNLi/0gcEFgK5WQAEOPho3GxqbaSV1fBPC0eVj78fP/AppmlsC6w+E4OTMz/QWg1e0GoLyibF8Bcdhr3OsWDlx/AS9v2oSGZhI6AAAAAElFTkSuQmCC');
+}
+.knight {
+  background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAACXklEQVQ4jZWT3UvTYRTHP3O/33TLzblpliUGmvnSSiWLNM0XrBRKWJIS+B9EdNWFF94UQZdRl0FIN71A1kVmUETZC6n5ihYVonOa+LK5Lbffpr/f01XDORP6wnPxwDmf53vOeQ5CCLY54nJzjdguRmKTRGRO4PvKuvIbfZIZa1o6bWfKhappeLx+evondBvjdUKI6GXiYbsovHCDyrISnNUVBFyjLCgqDz5Ps6as0lieR1jT8+TlxygkIZodcIn8U028uXeH3r6nqNoa+YeK+elV2WO3kJRs4dXwHJ3t52luKBdxgM6OK+QcaOD2o24+3L1P3cF0nG215O1OxJQA+9MtyAYDe89ex2a1EgdQkSkoOkxGShLDk4uUNJbxvGea7sFfvO+6xqxPwWAwkGyz4Z6bjwKiTVzy+gkpIVrKj1LZeoL6pg4K8x0ElQgV565S5cigb0oBTcUoS/EOvIEggdUg7/oHqXfexGCysORbQSdJLGLiy0yYOkcaiYkyVqsp3oEnGCKwGqRrwEVY1aHX65l2z2NPtSEZZSwmIyOzEQyyREQYth5jVmaWQKjU5Np5O7kCCIypNmz2VC6eLubx61HGhkbweDxbjBHYZQZNaKysKZQec6BpGutKCNW/zOT4N3zeFYr2ZWxMiQXcutRKkiwxOhNk4NMQZdlmqvPtLAfCvBh04Xa5qao4EgOIKQHAebxADLr8AKytryP0ErIkIYBss47e8amYr7zlgjSW5orMnRki/OOZaGmqFeYUu6gpzdtyqeIc/NVJR47YIesIJ+hZ8IcZ+77p5X+V8L/6A2ziPAUhzVvdAAAAAElFTkSuQmCC');
 }
 .row {
   display: block;
@@ -1973,5 +2676,8 @@ span {
 }
 .dead {
   opacity: 0.5;
+}
+.death {
+  background-color: #ddd;
 }
 </style>
