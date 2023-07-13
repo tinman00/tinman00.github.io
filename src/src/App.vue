@@ -6,7 +6,7 @@ const input = ref("")
 const runGame = ref(false)
 const fastOutput = ref(false)
 const showInputPanel = ref(true)
-const palceHolder = ref('输入不带空行的多个名字进行混战\n输入空行可以分队\n输入一个名字或在最前面输入单独一行\"!test!\"可以获得名字的详细信息')
+const palceHolder = ref('这里有一些神秘代码：\n\"!test!\"\n\"!rate!\"\n\"!@!\"\n\"seed:\"')
 function RunArena() {
   showInputPanel.value = false
   input.value = inputText.value

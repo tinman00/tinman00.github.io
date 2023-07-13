@@ -26,10 +26,6 @@ const SourceType = {
   Melee: 0,
   Ranged: 1
 }
-const CounterType = {
-  Player: 0,
-  Counter: 1
-}
 const GameMode = {
   Normal: 0,
   Test: 1,
@@ -48,6 +44,11 @@ const BuffType = {
   OnDealDamage: 3,
   OnDefend: 4,
   OnTime: 5
+}
+const SelectMethod = {
+  Forward: 0,
+  Backward: 1,
+  All: 2,
 }
 var buffTypeCount = 6
 const BuffId = {
@@ -81,13 +82,12 @@ const BuffIconUrl = {
   OnFire: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAJlJREFUOI2Vk7ENgDAMBJ+IMgUDMAUMwBLsg9iHJRgApmCAFPRQRTKOPyQu7dz/W3KAgtqG4WGzpgaezzN5nxWwnLWIq4GtMhP8wTJFksCCx+mmYnSFHCxNHBtomKWgCSxA9qLZ7woA0K8dnbVaUTrlwFg0gYaZWNEKVsVbcLoBAMfucS3hA1xLwLH7RCi5xJITlmbVp6w/0wsenDq/mhNLnwAAAABJRU5ErkJggg==",
   Poison: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAI9JREFUOI1jZMABvDP1/yPzt06/yIhNHYYgukZ0gG4QCoeQZmyGwBnEakY3hBGXZr8aRRT+ppb7WA1hwmY6umZcYgwMDAyM6Lb71SjCbYNpQuajuwSrC0gBLNgE0Z2Ly/lYXYAtsPDJMWFLYTCF6DQ6wBkLpACiExJ6DKAkJGINQdeMYQAxhuDNTPgMwpWdARibR0zgyVhuAAAAAElFTkSuQmCC",
 }
-
+const sideKey = ref(0)
 const playerString = ref("")
 const identity = ref(null)
 const sidepanel = ref('hsidepanel')
 const mainpanel = ref('hmainpanel')
 const gameMode = ref(GameMode.Normal)
-var teams = new Array()
 var rawPlayers = new Array()
 var players = new Array()
 var groups = new Array()
@@ -99,6 +99,7 @@ var autoScroll = false
 var inputString = ""
 var seed = ""
 var superStats = false
+var namesExisted = new Array()
 //#region message receiver
 onMounted(() => {
   mainPage = document.getElementById('mainPanel')
@@ -459,7 +460,7 @@ class Skill {
     this.level = 1.0 + plr.GetRand(100) / 100.0
   }
   SelectOneTarget() {
-    return this.owner.SelectOneEnermyInFront()
+    return this.owner.SelectOneEnermy(SelectMethod.Forward)
   }
   ValidTarget(target) {
     return true
@@ -796,10 +797,6 @@ class Ignite extends ActionSkill {
     this.InitActionSkl(1900)
     this.name = '引燃'
   }
-  SelectOneTarget() {
-    let t = this.owner.SelectOneEnermy()
-    return t
-  }
   SelectTargets() {
     let num = 4
     let targets = new Array()
@@ -843,10 +840,6 @@ class Detonate extends ActionSkill {
     super()
     this.InitActionSkl(4000)
     this.name = '引爆'
-  }
-  SelectOneTarget() {
-    let t = this.owner.SelectOneEnermy()
-    return t
   }
   SelectTargets() {
     let num = 3
@@ -1060,7 +1053,7 @@ class Apprehend extends ActionSkill {
     this.name = '无情铁手'
   }
   SelectOneTarget() {
-    let t = this.owner.SelectOneEnermy()
+    let t = this.owner.SelectOneEnermy(SelectMethod.Backward)
     return t
   }
   Act(targets) {
@@ -1457,9 +1450,7 @@ function GetProfessionList() {
 //#endregion
 //#region group
 class Group {
-  constructor(_id, _team) {
-    this.id = _id
-    this.team = _team
+  constructor() {
     // priority, front, back, invicible
     this.memberList = new Array()
     this.members = [new Array(), new Array(), new Array(), new Array()]
@@ -1467,6 +1458,9 @@ class Group {
     this.die = true
     this.clanName = ''
     this.clanIcon = ''
+  }
+  SetTeam(_team) {
+    this.team = _team
   }
   Update() {
     let alive = false
@@ -1492,19 +1486,17 @@ class Group {
   }
   AddToList(plr) {
     // console.log(`adding ${plr.name}`)
-    if (plr.type == CounterType.Counter) {
-      this.counter = plr
-      players.push(plr)
-    } else {
-      if (this.clanName == '') {
-        this.clanName = plr.name
-        this.clanIcon = IconCanvas.GetIcon(this.clanName)
-      }
-      let pos = players.indexOf(this.counter) + this.memberList.length + 1
-      players.splice(pos, 0, plr)
-      this.memberList.push(plr)
-      rawPlayers.push(plr)
+    if (this.clanName == '') {
+      this.clanName = plr.name
+      this.clanIcon = IconCanvas.GetIcon(this.clanName)
     }
+    let pos = 0
+    players.push(plr)
+    this.memberList.push(plr)
+    this.memberList = this.memberList.sort((a, b) => {
+      return a.key < b.key ? 1 : -1
+    })
+    rawPlayers.push(plr)
   }
   Add(plr, row) {
     this.members[row].push(plr)
@@ -1526,15 +1518,50 @@ class Group {
     this.members[oldRow].splice(pos, 1)
     this.Add(plr, newRow)
   }
+  SelectForward() {
+    if (this.members[0].length > 0) {
+      return new Array().concat(this.members[0])
+    }
+    for (let row of this.members) {
+      if (row.length > 0) {
+        return new Array().concat(row)
+      }
+    }
+    return new Array()
+  }
+  SelectBackward() {
+    if (this.members[0].length > 0) {
+      return new Array().concat(this.members[0])
+    }
+    for (let i = 3; i >= 0; i--) {
+      if (this.members[i].length > 0) {
+        return new Array().concat(this.members[i])
+      }
+    }
+    return new Array()
+  }
+  SelectAll() {
+    if (this.members[0].length > 0) {
+      return new Array().concat(this.members[0])
+    }
+    let ret = new Array()
+    for (let row of this.members) {
+      ret = ret.concat(row)
+    }
+    return ret
+  }
 }
 //#endregion
 //#region player
 class Plr {
-  constructor(_name, _team, _group, _type) {
-    // console.log(`create Plr(${_name}, ${_team}, ${_group}, ${_type})`)
+  constructor(_name, _clanName, _team, _group, _upgrade) {
+    // console.log(`create Plr(${_name}, ${_team}, ${_group})`)
     this.name = _name;
+    this.clanName = _clanName
+    this.fullName = `${_name}@${_clanName}`
+    this.key = sha512(this.fullName)
     this.team = _team;
-    this.attr = SHA.Get(_name);
+    this.attr = SHA.Get(this.fullName);
     this.currentRand = 0;
     this.stat = [0, 0, 0, 0, 0, 0, 0];
     // D refers to Direct, F refers to Final
@@ -1545,17 +1572,46 @@ class Plr {
     this.health = 0;
     this.maxHealth = 0;
     this.renderHealth = 0;
-    this.alive = _type == CounterType.Player ? true : false;
-    this.renderAlive = _type == CounterType.Player ? true : false;
+    this.alive = true;
+    this.renderAlive = true;
     this.passiveSkillList = new Array();
     this.actionSkillList = new Array();
     this.buffList = GetBuffList(this);
     this.SP = 0;
     this.group = _group;
-    this.type = _type;
+    this.upgrade = _upgrade
     this.damageDealt = [0, 0, 0];
     this.icon = '';
     this.combo = null;
+  }
+  Copy() {
+    let p = new Plr();
+    p.name = this.name
+    p.clanName = this.clanName
+    p.fullName = this.fullName
+    // p.team = this.team
+    p.attr = new Array().concat(this.attr)
+    p.currentRand = this.currentRand
+    p.stat = new Array().concat(this.stat)
+    p.statDPlus = new Array().concat(this.statDPlus)
+    p.statDMult = new Array().concat(this.statDMult)
+    p.statFPlus = new Array().concat(this.statFPlus)
+    p.statFMult = new Array().concat(this.statFMult)
+    p.health = this.health
+    p.maxHealth = this.maxHealth
+    p.renderHealth = this.renderHealth
+    p.alive = this.alive
+    p.renderAlive = this.renderAlive
+    p.passiveSkillList = new Array().concat(this.passiveSkillList)
+    p.actionSkillList = new Array().concat(this.actionSkillList)
+    p.buffList = new Array().concat(this.buffList)
+    p.SP = this.SP
+    // p.group = this.group
+    p.upgrade = this.upgrade
+    p.damageDealt = new Array().concat(this.damageDealt)
+    p.icon = this.icon
+    p.combo = this.combo
+    return p
   }
   GetRandom() {
     return SHA.GetRandom(this.attr, this.currentRand++);
@@ -1630,33 +1686,24 @@ class Plr {
     this.alive = false;
     this.group.Die(this);
   }
-  SelectOneEnermyInFront() {
+  SelectOneEnermy(method) {
     let g = this.group;
     let pos = this.GetRand(aliveGroups.length - 1);
     if (pos >= aliveGroups.indexOf(g)) {
       pos++;
     }
     let targetGroup = aliveGroups[pos];
-    let row = 0;
-    for (let i in targetGroup.members) {
-      if (targetGroup.members[i].length > 0) {
-        row = i
-        break
-      }
-    }
-    pos = this.GetRand(targetGroup.members[row].length);
-    return targetGroup.members[row][pos];
-  }
-  SelectOneEnermy() {
-    let g = this.group;
-    let pos = this.GetRand(aliveGroups.length - 1);
-    if (pos >= aliveGroups.indexOf(g)) {
-      pos++;
-    }
-    let targetGroup = aliveGroups[pos];
-    let targets = [];
-    for (let i in targetGroup.members) {
-      targets = targets.concat(targetGroup.members[i])
+    let targets = new Array();
+    switch(method) {
+      case SelectMethod.Forward:
+        targets = targetGroup.SelectForward();
+        break;
+      case SelectMethod.Backward:
+        targets = targetGroup.SelectBackward();
+        break;
+      case SelectMethod.All:
+        targets = targetGroup.SelectAll();
+        break;
     }
     pos = this.GetRand(targets.length);
     return targets[pos];
@@ -1792,11 +1839,11 @@ class Plr {
 //#region init
 function Reset() {
   gameEnd = false
-  teams = new Array()
   rawPlayers = new Array()
   players = new Array()
   groups = new Array()
   aliveGroups = new Array()
+  namesExisted = new Array()
   roundcnt = 0
   autoScroll = false
   seed = ""
@@ -1806,123 +1853,125 @@ function InitPlayers() {
   GetTeams()
   InitProfessions()
   let seq = SHA.Get(seed)
-  for (let team of teams) {
-    for (let plr of team) {
+  for (let grp of groups) {
+    for (let plr of grp.team) {
       plr.attr = SHA.Get(plr.name + seed)
     }
   }
   // Log
   // console.log(`seed:"${seed}"`)
 }
+
 function GetTeams() {
-  let plrs = inputString.split('\n')
+  let plrString = inputString.split(/\r?\n/)
   let curTeam = new Array()
   let teamId = 1
-  for (let i = 0; i < plrs.length; i++) {
-    plrs[i] = plrs[i].replaceAll(' ', '')
-    if (plrs[i] != '' && plrs.indexOf(plrs[i]) != i) {
-      plrs.splice(i, 1)
-      i--
-    }
+  for (let i in plrString) {
+    plrString[i] = plrString[i].trim()
   }
-  if (plrs[0] == SpecialName.Test) {
-    plrs.splice(0, 1)
+  while (plrString[0] == '') {
+    plrString.splice(0, 1)
+  }
+  while (plrString[plrString.length - 1] == '') {
+    plrString.splice(plrString.length - 1, 1)
+  }
+  if (plrString[0] == SpecialName.Test) {
+    plrString.splice(0, 1)
     gameMode.value = GameMode.Test
-  }
-  if (plrs[0] == SpecialName.WinRate) {
-    plrs.splice(0, 1)
+  } else if (plrString[0] == SpecialName.WinRate) {
+    plrString.splice(0, 1)
     gameMode.value = GameMode.WinRate
   }
-  for (let i in plrs) {
-    if (plrs[i].startsWith(SpecialName.SetSeed)) {
-      seed = plrs[i].slice(SpecialName.SetSeed.length, plrs[i].length)
-      plrs.splice(i, 1)
-      break
-    }
-  }
-  for (let i in plrs) {
-    if (plrs[i] === SpecialName.SuperStats) {
-      superStats = true
-      plrs.splice(i, 1)
-      break
-    }
-  }
-  let sortedPlrs = new Array()
-  let temp = new Array()
-  let teamCount = 0
-  let teamEmpty = true
-  for (let p of plrs) {
-    if (p != '') {
-      temp.push(p)
-      teamCount = teamId
-      teamEmpty = false
-    } else {
-      temp.sort()
-      sortedPlrs.push(temp)
-      temp = new Array()
-      if (!teamEmpty) {
-        teamId++
-      }
-    }
-  }
-  temp.sort()
-  sortedPlrs.push(temp)
-  sortedPlrs.sort()
-  temp = new Array()
-  for (let t of sortedPlrs) {
-    temp = temp.concat(t, [""])
-  }
-  sortedPlrs = temp
-  if (teamCount == 1) {
-    teamId = 1
-    for (let p of sortedPlrs) {
-      if (p != '') {
-        let newGroup = new Group(teamId, curTeam)
-        groups.push(newGroup)
-        newGroup.AddToList(new Plr(`Team ${teamId}`, curTeam, newGroup, CounterType.Counter))
-        let newPlr = new Plr(p, curTeam, newGroup, CounterType.Player)
-        curTeam.push(newPlr)
-        teams.push(curTeam)
-        teamId++
-        newGroup.AddToList(newPlr)
-        curTeam = new Array()
-      }
-    }
-  }
-  else {
-    teamId = 1
-    let newGroup = new Group(teamId, curTeam)
-    groups.push(newGroup)
-    newGroup.AddToList(new Plr(`Team ${teamId}`, curTeam, newGroup, CounterType.Counter))
-    for (let p of sortedPlrs) {
-      if (p != '') {
-        let newPlr = new Plr(p, curTeam, newGroup, CounterType.Player)
-        curTeam.push(newPlr)
-        newGroup.AddToList(newPlr)
+  for (let i in plrString) {
+    if (plrString[i].startsWith(SpecialName.SetSeed)) {
+      if (typeof seed === 'string') {
+        seed += plrString[i].slice(SpecialName.SetSeed.length, plrString[i].length)
       } else {
-        if (curTeam.length != 0) {
-          teams.push(curTeam)
-          teamId++
-          groups.push(newGroup)
-          newGroup.AddToList(new Plr(`Team ${teamId}`, curTeam, newGroup, CounterType.Counter))
-        }
-        curTeam = new Array()
-        newGroup = new Group(teamId, curTeam)
+        seed = plrString[i].slice(SpecialName.SetSeed.length, plrString[i].length)
       }
-    }
-    if (curTeam.length != 0) {
-      teams.push(curTeam)
+      plrString.splice(i, 1)
     }
   }
-
-  // console.log(rawPlayers)
-  if (rawPlayers.length <= 1) {
-    gameMode.value = GameMode.Test
+  for (let i in plrString) {
+    if (plrString[i] === SpecialName.SuperStats) {
+      superStats = true
+      plrString.splice(i, 1)
+    }
   }
+  let grouped = plrString.includes('')
+  let grps = new Array()
+  let currentGroup = new Array()
+  for (let i in plrString) {
+    let name = plrString[i]
+    if (name == '') {
+      if (currentGroup.length > 0) {
+        grps.push(currentGroup)
+      }
+      clanName = null
+      currentGroup = new Array()
+      continue
+    }
+    if (!grouped) {
+      if (currentGroup.length > 0) {
+        grps.push(currentGroup)
+      }
+      currentGroup = new Array()
+    }
+    let upgrade = ''
+    if (name.includes('+')) {
+      let pos = name.indexOf('+')
+      upgrade = name.substring(pos + 1)
+      name = name.substring(0, pos)
+    }
+    if (name.includes('@')) {
+      let strSlice = name.split('@')
+      currentGroup.push({baseName: strSlice[0], clanName: strSlice[1], upgrade: upgrade})
+    } else {
+      currentGroup.push({baseName: name, clanName: name, upgrade: upgrade})
+    }
+  }
+  if (currentGroup.length > 0) {
+    grps.push(currentGroup)
+  }
+  InitTeams(grps)
+  players = players.sort((a, b) => {
+    return a.key < b.key ? 1 : -1
+  })
+}
+function InitTeams(rawGroup) {
+  for (let list of rawGroup) {
+    let group = new Group()
+    let team = new Array()
+    for (let obj of list) {
+      if (obj.clanName == null) {
+        obj.clanName = obj.baseName
+      }
+      if (namesExisted.includes(`${obj.baseName}@${obj.clanName}`)) {
+        continue
+      }
+      namesExisted.push(`${obj.baseName}@${obj.clanName}`)
+      let plr = new Plr(obj.baseName, obj.clanName, team, group, obj.upgrade)
+      team.push(plr)
+      group.AddToList(plr)
+    }
+    team = team.sort((a, b) => {
+      return a.fullName > b.fullName ? 1 : -1
+    })
+    let str = ''
+    for (let plr of team) {
+      str += plr.fullName
+    }
+    group.key = sha512(str)
+    group.SetTeam(team)
+    groups.push(group)
+  }
+  groups = groups.sort((a, b) => {
+    return a.key > b.key ? 1 : -1
+  })
 }
 function InitProfessions() {
-  for (let team of teams) {
-    for (let plr of team) {
+  for (let grp of groups) {
+    for (let plr of grp.team) {
       plr.InitProfession()
       plr.InitSkills()
       plr.InitStat()
@@ -1933,15 +1982,12 @@ function ShowBasicStats() {
   let str = ""
   Renderer.Print(Render.Title1(`Namerena False魔改版`))
   Renderer.Print(Render.Title2(`(魔改自“名字竞技场”，原地址namerena.github.io)`), 0, true)
-  // console.log(teams)
-  for (let team of teams) {
-    for (let plr of team) {
-      str = `${Render.Player(plr)}  血量${plr.stat[Stat.HP]}  攻${plr.stat[Stat.atk]}  防${plr.stat[Stat.def]}  魔${plr.stat[Stat.mag]}  抗${plr.stat[Stat.res]}  速${plr.stat[Stat.spd]}  敏${plr.stat[Stat.dex]}`
-      Renderer.Print(T(` `))
-      Renderer.Print(str)
-      Renderer.EndLine()
-      // console.log(plr.name, plr.GetStat())
-    }
+  for (let plr of rawPlayers) {
+    str = `${Render.Player(plr)}  血量${plr.stat[Stat.HP]}  攻${plr.stat[Stat.atk]}  防${plr.stat[Stat.def]}  魔${plr.stat[Stat.mag]}  抗${plr.stat[Stat.res]}  速${plr.stat[Stat.spd]}  敏${plr.stat[Stat.dex]}`
+    Renderer.Print(T(` `))
+    Renderer.Print(str)
+    Renderer.EndLine()
+    // console.log(plr.name, plr.GetStat())
   }
   if (!seed === "") {
     Renderer.Print(T(` `))
@@ -2012,9 +2058,9 @@ function Win(_team) {
   str += Render.td(`造成真实伤害`, 'resultth')
   final += Render.tr(str, 'resulttr')
   str = ''
-  for (let team of teams) {
-    if (team == _team) continue
-    for (let plr of team) {
+  for (let grp of groups) {
+    if (grp.team == _team) continue
+    for (let plr of grp.team) {
       str += Render.td(Render.PlayerForRender(plr, plr.health, plr.health), 'resulttd resultname')
       let tot = plr.damageDealt[DamageType.Physical] + plr.damageDealt[DamageType.Magic] + plr.damageDealt[DamageType.True]
       str += Render.td(Transfer(` ${tot} `), 'resulttd')
@@ -2054,11 +2100,6 @@ function Run() {
   Reset()
   Renderer.Reset()
   InitPlayers()
-  // for (let team of teams) {
-  //   for (let plr of team) {
-  //     console.log(plr.actionSkillList)
-  //   }
-  // }
   ShowBasicStats()
   Renderer.Run(identity.value)
   if (gameMode.value == GameMode.Normal) {
@@ -2075,13 +2116,13 @@ function Run() {
     CssStyle.SetActive(false)
     IconCanvas.SetActive(false)
     let groupWinCount = []
-    let groups = []
+    let grps = []
     for (let grp of aliveGroups) {
       groupWinCount.push(0)
-      groups.push(grp.clanName)
+      grps.push(grp.clanName)
     }
     const f = TimeSlice(WinRate)
-    f(identity.value, groupWinCount, groups, 100)
+    f(identity.value, groupWinCount, grps, 100)
   }
 }
 function TimeSlice(fnc, time = 25) {
@@ -2104,16 +2145,16 @@ function TimeSlice(fnc, time = 25) {
     return go()
   }
 }
-function* WinRate(id, groupWinCount, groups, outputNum) {
+function* WinRate(id, groupWinCount, grps, outputNum) {
   for (let cur = 0; cur <= 10000; cur += 100) {
     if (id != identity.value) return
-    yield GetWinRate(id, groupWinCount, groups, cur, outputNum)
+    yield GetWinRate(id, groupWinCount, grps, cur, outputNum)
     while (outputNum <= cur + 100) {
       outputNum *= 10
     }
   }
 }
-function GetWinRate(id, groupWinCount, groups, cur, outputNum) {
+function GetWinRate(id, groupWinCount, grps, cur, outputNum) {
   if (id != identity.value) return
   // console.log("rate", cur)
   if (cur == 10000) {
@@ -2133,15 +2174,15 @@ function GetWinRate(id, groupWinCount, groups, cur, outputNum) {
           NextRound()
         // })
       }
-      groupWinCount[groups.indexOf(aliveGroups[0].clanName)]++
+      groupWinCount[grps.indexOf(aliveGroups[0].clanName)]++
     // })
   }
   if (cur + 100 >= outputNum) {
     Renderer.SetActive(true)
     Renderer.Print(S(`评测进行中${cur / 100 + 1}%...`), 800, true)
     Renderer.Print(S(`评测精度${100 / (cur + 100)}%:`), 100, true)
-    for (let i in groups) {
-      Renderer.Print(S(` `) + S(`小队"${groups[i]}"的胜率为`) + T(`[${groupWinCount[i] * 100 / (cur + 100)}%]`), 100, true)
+    for (let i in grps) {
+      Renderer.Print(S(` `) + S(`小队"${grps[i]}"的胜率为`) + T(`[${groupWinCount[i] * 100 / (cur + 100)}%]`), 100, true)
     }
     Renderer.SetActive(false)
   } else {
@@ -2255,6 +2296,7 @@ var Renderer = {
         req.plr.UpdateRenderHealth(req.hp)
       }
     }
+    ForceUpdate()
   },
   Close: function() {
     this.outputStream.push({str: '', delay: 0, end:false, cmd:'close'})
@@ -2265,6 +2307,9 @@ var Renderer = {
   SetActive: function(state) {
     this.active = state
   },
+}
+function ForceUpdate() {
+  sideKey.value++
 }
 class RenderRequest {
   constructor(_plr, _hp) {
@@ -2436,15 +2481,6 @@ function T(str) {
 }
 function S(str) {
   return `<span class="sentence">${str}</span>`
-}
-window.onresize = () => {
-  if (document.documentElement.clientWidth >= 500) {
-    sidepanel.value = 'hsidepanel'
-    mainpanel.value = 'hmainpanel'
-  } else {
-    sidepanel.value = 'vsidepanel'
-    mainpanel.value = 'vmainpanel'
-  }
 }
 //#endregion
 //#region icon canvas
@@ -2698,7 +2734,15 @@ var CssStyle = {
 }
 IconCanvas.Init()
 //#endregion
-
+window.onresize = () => {
+  if (document.documentElement.clientWidth >= 500) {
+    sidepanel.value = 'hsidepanel'
+    mainpanel.value = 'hmainpanel'
+  } else {
+    sidepanel.value = 'vsidepanel'
+    mainpanel.value = 'vmainpanel'
+  }
+}
 </script>
 
 <template>
@@ -2761,7 +2805,7 @@ span {
   width: 200px;
   height: 100%;
   padding: 2px;
-  border-right-color: blueviolet;
+  border-right-color: #f66;
   border-right-width: 2px;
   border-right-style: solid;
   overflow: auto;
