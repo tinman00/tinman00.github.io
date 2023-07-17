@@ -1686,6 +1686,7 @@ class Plr {
   Die() {
     this.alive = false;
     this.group.Die(this);
+    RoundEnd()
   }
   SelectOneEnermy(method) {
     let g = this.group;
@@ -1790,7 +1791,7 @@ class Plr {
         skl.CoolDown(deltaTime);
       }
       // console.log(deltaTime)
-      while (this.SP >= 1000) {
+      while (this.SP >= 1000 && !gameEnd) {
         if (this.combo != null) {
           let skl = this.combo;
           let targets = skl.SelectTargets();
