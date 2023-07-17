@@ -1909,7 +1909,6 @@ function GetTeams() {
       if (currentGroup.length > 0) {
         grps.push(currentGroup)
       }
-      clanName = null
       currentGroup = new Array()
       continue
     }
