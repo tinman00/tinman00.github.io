@@ -8,7 +8,7 @@ function check() {
   if (cw().document.querySelectorAll('span.u').length <= 10) {
     setTimeout(() => {
       check();
-    }, 500);
+    }, 100);
     return;
   }
   const val = parseInt(cw().document.querySelectorAll('span.u')[10].textContent
@@ -20,7 +20,7 @@ function check() {
   reload();
   setTimeout(() => {
     check();
-  }, 500);
+  }, 100);
 }
 function reload() {
   if (j < all.length) {
