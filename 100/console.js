@@ -1,7 +1,8 @@
 const all = document.querySelector('#textdiv>textarea').value.split('\n');
 let j = 0;
 let fi = 0;
-
+let result = "";
+let cur="";
 function check() {
   if (fi) {
     return;
@@ -28,11 +29,15 @@ function check() {
     return;
   }
   const val = parseInt(progress[pos].textContent.split(' ')[2]);
-  if (val >= 0) {
-    console.log(all[j] + '\t' + val);
+  if (cur != cw().document.querySelectorAll('div.name')[1].textContent) {
+    if (val >= 0) {
+      result+=(`${all[j]} ${val}`)+"\n";
+    }
+    j++;
+    cur = cw().document.querySelectorAll('div.name')[1].textContent;
+    document.querySelector('textarea#result').value = result;
+    reload();
   }
-  j++;
-  reload();
   setTimeout(() => {
     check();
   }, 500);
@@ -46,5 +51,11 @@ function reload() {
     fi = 1;
   }
 }
+const NW = document.createElement('textarea');
+NW.id = 'result';
+document.body.appendChild(NW);
+NW.setAttribute('readonly', true);
+document.getElementsByClassName('mdframe')[0].setAttribute('style',
+    'display:none;');
 reload();
 check();
