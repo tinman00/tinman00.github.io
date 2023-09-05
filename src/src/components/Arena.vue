@@ -684,13 +684,13 @@ class MagicLaser extends ActionSkill {
     let o = this.owner, stat = o.GetStat()
     let atp = stat[Stat.mag], target = targets[0]
     Renderer.Print(Transfer(`[0] 发射[魔法激光]，`, o), 500)
-    let dmg = target.CalcDamage([new MagicDamage(atp * 0.7 + 40)])
+    let dmg = target.CalcDamage([new MagicDamage(atp * 0.7 + 80)])
     target.DealDamage(o, dmg, SourceType.Ranged, false)
     Renderer.EndLine()
   }
   Introduction() {
     this.Intro()
-    Renderer.Print(Transfer("效果：造成 [2] 点伤害", null, null, [new MagicDamage('70%魔+40')]))
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害", null, null, [new MagicDamage('70%魔+80')]))
     Renderer.EndLine()
   }
 }
@@ -758,6 +758,7 @@ class FireBall extends ComboSkill {
       this.targets = targets
       Renderer.Print(Transfer(`[0] 开始吟唱[火球]术`, o), 500)
       Renderer.EndLine()
+      o.SP += 500
       this.owner.combo = this
       this.stage++
     } else if (this.stage == 1) {
@@ -774,7 +775,7 @@ class FireBall extends ComboSkill {
       let buf = target.buffList[BuffType.Enchantment][BuffId.OnFire].counter
       // console.log(buf)
       buf = typeof buf === "number" ? buf : 0
-      let dmg = target.CalcDamage([new MagicDamage(atp * 0.6 + 90 + buf * 10)])
+      let dmg = target.CalcDamage([new MagicDamage(atp * 0.6 + 110 + buf * 10)])
       Renderer.Print(Transfer(`[0] 发动[火球]术！，`, o), 500)
       target.UpdateBuff(new OnFire(1000, target, true))
       target.DealDamage(o, dmg, SourceType.Ranged, false)
@@ -788,7 +789,7 @@ class FireBall extends ComboSkill {
   }
   Introduction() {
     this.Intro()
-    Renderer.Print(Transfer("效果：造成 [2] 点伤害，并对对手附加一层火焰", null, null, [new MagicDamage('60%魔+90+10*火焰层数')]))
+    Renderer.Print(Transfer("效果：造成 [2] 点伤害，并对对手附加一层火焰", null, null, [new MagicDamage('60%魔+110+10*火焰层数')]))
     Renderer.EndLine()
   }
 }
@@ -823,7 +824,7 @@ class Ignite extends ActionSkill {
     let atk = stat[Stat.atk], mag = stat[Stat.mag]
     Renderer.Print(Transfer(`[0] [引燃]对手，`, o), 500, true)
     for (let target of targets) {
-      let dmg = target.CalcDamage([new MagicDamage(mag * 0.4)])
+      let dmg = target.CalcDamage([new MagicDamage(mag * 0.5)])
       target.UpdateBuff(new OnFire(1000, target, true))
       Renderer.Print(T(` `))
       target.DealDamage(o, dmg, SourceType.Ranged, false)
@@ -832,7 +833,7 @@ class Ignite extends ActionSkill {
   }
   Introduction() {
     this.Intro()
-    Renderer.Print(Transfer("效果：对至多4名对手造成 [2] 点伤害，并分别对其附加一层火焰", null, null, [new MagicDamage('40%魔')]))
+    Renderer.Print(Transfer("效果：对至多4名对手造成 [2] 点伤害，并分别对其附加一层火焰", null, null, [new MagicDamage('60%魔')]))
     Renderer.EndLine()
   }
 }
@@ -869,7 +870,7 @@ class Detonate extends ActionSkill {
     for (let target of targets) {
       let buf = target.buffList[BuffType.Enchantment][BuffId.OnFire].counter
       buf = typeof buf === "number" ? buf : 0
-      let dmg = target.CalcDamage([new MagicDamage(mag * 0.25 + buf * 110)])
+      let dmg = target.CalcDamage([new MagicDamage(mag * 0.25 + buf * 130)])
       Renderer.Print(T(``))
       target.DealDamage(o, dmg, SourceType.Ranged, false)
       target.buffList[BuffType.Enchantment][BuffId.OnFire].Destroy()
@@ -878,7 +879,7 @@ class Detonate extends ActionSkill {
   }
   Introduction() {
     this.Intro()
-    Renderer.Print(Transfer("效果：引爆至多6名对手，造成 [2] 点伤害，并移除其附加的火焰层数", null, null, [new MagicDamage('25%魔+火焰层数*110')]))
+    Renderer.Print(Transfer("效果：引爆至多6名对手，造成 [2] 点伤害，并移除其附加的火焰层数", null, null, [new MagicDamage('25%魔+火焰层数*130')]))
     Renderer.EndLine()
   }
 }
