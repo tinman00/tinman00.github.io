@@ -2509,7 +2509,7 @@
       var _ = this
       _.a = a
       _.b = b
-      _.c = 100
+      _.c = 1000
       _.d = 33554431
       _.e = c
       _.f = d
@@ -3529,7 +3529,7 @@
                 g = new V.iV(a9, a8, a3, a4, a5, P.cu(t.X, t.B), new Float64Array(1))
                 g.dZ(a8, a9)
                 d = g
-                d.d = 100
+                d.d = 1000
                 c = Z.jt(d)
                 c.r = 2000
                 s = 1
@@ -3545,7 +3545,7 @@
                 g = new L.iR(a8, a9, a4, a3, a5, a6, new Float64Array(1))
                 g.dY(a8, a9)
                 b = g
-                b.c = 100
+                b.c = 1000
                 a = Z.jt(b)
                 a.r = 2000
                 s = 1
@@ -6472,7 +6472,7 @@
       _.a = a
       _.b = b
       _.c = !1
-      _.d = 100
+      _.d = 1000
       _.e = 33554431
       _.f = c
       _.r = d
@@ -8083,7 +8083,7 @@
       } else {
         P.count = 1
       }
-      if (P.count > 1100) return
+      if (P.count > 1050) return
       if (P.count == 1) {
         setTimeout(H.cU(new P.l9(this, b), 0), 0)
       } else {
